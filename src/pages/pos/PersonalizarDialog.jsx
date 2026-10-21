@@ -1,7 +1,6 @@
 import { useState } from 'react';
-import { Box, Button, ButtonBase, Dialog, IconButton, TextField, Typography, useMediaQuery } from '@mui/material';
+import { Alert, Box, Button, ButtonBase, Dialog, IconButton, TextField, Typography, useMediaQuery } from '@mui/material';
 import { Add, Close, Remove } from '@mui/icons-material';
-import { ESTILO_CATEGORIA, EXTRAS } from '../../data/catalogo';
 import { COLORS } from '../../theme';
 import { formatMoney } from '../../utils/format';
 import { precioUnitario } from './pedido';
@@ -43,44 +42,67 @@ const Stepper = ({ value, onChange, min = 1 }) => (
   </Box>
 );
 
-const Contenido = ({ producto, linea, onConfirm, onClose }) => {
-  const opciones = producto.opciones ?? {};
-  const cantidadSabores = opciones.sabores?.cantidad ?? 0;
+const Nota = ({ children }) => (
+  <Box component="span" sx={{ display: 'block', fontSize: '0.75rem', fontWeight: 500, color: COLORS.muted }}>
+    {children}
+  </Box>
+);
 
-  const [presentacion, setPresentacion] = useState(linea?.presentacion ?? opciones.presentaciones?.[0] ?? null);
+// Presentación de la línea que se modifica (por id; las ventas anteriores solo tenían el nombre)
+const presentacionDeLinea = (producto, linea) =>
+  producto.presentaciones.find((p) => (linea?.idPresentacion ? p.id === linea.idPresentacion : p.nombre === linea?.presentacion)) ??
+  producto.presentaciones[0];
+
+const Contenido = ({ producto, linea, onConfirm, onClose }) => {
+  const [idPresentacion, setIdPresentacion] = useState(() => presentacionDeLinea(producto, linea).id);
+  // { idSabor: veces elegido }
   const [sabores, setSabores] = useState(() =>
-    Object.fromEntries((linea?.sabores ?? []).map((s) => [s.nombre, s.cantidad]))
+    Object.fromEntries(
+      (linea?.sabores ?? []).map((s) => [s.id ?? producto.sabores.find((x) => x.nombre === s.nombre)?.id, s.cantidad]).filter(([id]) => id)
+    )
   );
-  const [extras, setExtras] = useState(linea?.extras ?? []);
+  const [extras, setExtras] = useState(() => (linea?.extras ?? []).map((e) => (typeof e === 'object' ? e.id : e)));
   const [notas, setNotas] = useState(linea?.notas ?? '');
   const [cantidad, setCantidad] = useState(linea?.cantidad ?? 1);
 
+  const presentacion = producto.presentaciones.find((p) => p.id === idPresentacion) ?? producto.presentaciones[0];
+  const cantidadSabores = producto.requiereSabor ? presentacion.numSabores : 0;
   const elegidos = Object.values(sabores).reduce((a, b) => a + b, 0);
   const faltan = cantidadSabores - elegidos;
+  const sinSabores = producto.requiereSabor && producto.sabores.length === 0;
 
-  const elegirSabor = (nombre) => {
-    if (cantidadSabores === 1) return setSabores({ [nombre]: 1 });
-    if (faltan > 0) setSabores((prev) => ({ ...prev, [nombre]: (prev[nombre] ?? 0) + 1 }));
+  const elegirPresentacion = (p) => {
+    setIdPresentacion(p.id);
+    // Si la nueva presentación lleva menos sabores, se vuelven a elegir
+    if (producto.requiereSabor && elegidos > p.numSabores) setSabores({});
   };
 
-  const quitarSabor = (nombre) =>
+  const elegirSabor = (id) => {
+    if (cantidadSabores === 1) return setSabores({ [id]: 1 });
+    if (faltan > 0) setSabores((prev) => ({ ...prev, [id]: (prev[id] ?? 0) + 1 }));
+  };
+
+  const quitarSabor = (id) =>
     setSabores((prev) => {
-      const siguiente = { ...prev, [nombre]: prev[nombre] - 1 };
-      if (!siguiente[nombre]) delete siguiente[nombre];
+      const siguiente = { ...prev, [id]: prev[id] - 1 };
+      if (!siguiente[id]) delete siguiente[id];
       return siguiente;
     });
 
   const toggleExtra = (id) => setExtras((prev) => (prev.includes(id) ? prev.filter((e) => e !== id) : [...prev, id]));
 
   const configuracion = {
-    presentacion,
-    sabores: (opciones.sabores?.lista ?? [])
-      .filter((s) => sabores[s.nombre])
-      .map((s) => ({ nombre: s.nombre, cantidad: sabores[s.nombre], extra: s.extra ?? 0 })),
-    extras,
+    idPresentacion: presentacion.id,
+    presentacion: producto.presentaciones.length > 1 ? presentacion.nombre : null,
+    precioBase: presentacion.precio,
+    sabores: producto.sabores
+      .filter((s) => sabores[s.id])
+      .map((s) => ({ id: s.id, nombre: s.nombre, cantidad: sabores[s.id], extra: presentacion.recargos[s.id] ?? 0 })),
+    extras: producto.extras.filter((e) => extras.includes(e.id)).map(({ id, nombre, precio }) => ({ id, nombre, precio })),
     notas: notas.trim(),
   };
-  const precio = precioUnitario({ precioBase: producto.precio, ...configuracion });
+  const precio = precioUnitario(configuracion);
+  const esPromo = Boolean(producto.idPromocion);
 
   return (
     <>
@@ -98,16 +120,7 @@ const Contenido = ({ producto, linea, onConfirm, onClose }) => {
       >
         <Box
           aria-hidden
-          sx={{
-            width: 52,
-            height: 52,
-            flexShrink: 0,
-            borderRadius: 2.5,
-            display: 'grid',
-            placeItems: 'center',
-            fontSize: '1.8rem',
-            background: ESTILO_CATEGORIA[producto.categoria],
-          }}
+          sx={{ width: 52, height: 52, flexShrink: 0, borderRadius: 2.5, display: 'grid', placeItems: 'center', fontSize: '1.8rem', background: producto.fondo }}
         >
           {producto.emoji}
         </Box>
@@ -115,7 +128,9 @@ const Contenido = ({ producto, linea, onConfirm, onClose }) => {
           <Typography id="personalizar-titulo" component="h2" sx={{ fontWeight: 700, fontSize: '1.15rem', color: COLORS.ink }}>
             {producto.nombre}
           </Typography>
-          <Typography sx={{ fontSize: '0.85rem', color: COLORS.muted }}>Precio base {formatMoney(producto.precio)}</Typography>
+          <Typography sx={{ fontSize: '0.85rem', color: COLORS.muted }}>
+            {esPromo ? producto.descripcion : `${presentacion.nombre} · ${formatMoney(presentacion.precio)}`}
+          </Typography>
         </Box>
         <IconButton aria-label="Cerrar" onClick={onClose} sx={{ width: 44, height: 44, backgroundColor: COLORS.inputBg }}>
           <Close />
@@ -124,74 +139,78 @@ const Contenido = ({ producto, linea, onConfirm, onClose }) => {
 
       {/* OPCIONES */}
       <Box sx={{ flex: 1, overflowY: 'auto', px: { xs: 2, sm: 3 }, pt: 2.5 }}>
-        {opciones.presentaciones && (
+        {producto.presentaciones.length > 1 && (
           <Seccion titulo="Presentación">
-            <Box sx={{ display: 'grid', gridTemplateColumns: `repeat(${opciones.presentaciones.length}, 1fr)`, gap: 1 }}>
-              {opciones.presentaciones.map((p) => (
-                <ButtonBase key={p} onClick={() => setPresentacion(p)} sx={{ ...opcionSx(presentacion === p), justifyContent: 'center' }}>
-                  {p}
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: `repeat(${Math.min(producto.presentaciones.length, 4)}, 1fr)` }, gap: 1 }}>
+              {producto.presentaciones.map((p) => (
+                <ButtonBase key={p.id} onClick={() => elegirPresentacion(p)} sx={{ ...opcionSx(presentacion.id === p.id), justifyContent: 'center', textAlign: 'center' }}>
+                  <Box>
+                    {p.nombre}
+                    <Nota>{formatMoney(p.precio)}</Nota>
+                  </Box>
                 </ButtonBase>
               ))}
             </Box>
           </Seccion>
         )}
 
-        {opciones.sabores && (
+        {producto.requiereSabor && (
           <Seccion
             titulo={cantidadSabores === 1 ? 'Elige el sabor' : `Elige ${cantidadSabores} sabores`}
             ayuda={
-              <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, color: faltan === 0 ? '#15803d' : COLORS.red }}>
-                {elegidos} / {cantidadSabores}
-              </Typography>
+              !sinSabores && (
+                <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, color: faltan === 0 ? COLORS.greenText : COLORS.red }}>
+                  {elegidos} / {cantidadSabores}
+                </Typography>
+              )
             }
           >
-            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(3, 1fr)' }, gap: 1 }}>
-              {opciones.sabores.lista.map((sabor) => {
-                const veces = sabores[sabor.nombre] ?? 0;
-                return (
-                  <Box key={sabor.nombre} sx={{ position: 'relative' }}>
-                    <ButtonBase
-                      onClick={() => elegirSabor(sabor.nombre)}
-                      disabled={!veces && faltan <= 0 && cantidadSabores > 1}
-                      sx={{ ...opcionSx(veces > 0), width: '100%', pr: veces && cantidadSabores > 1 ? 6 : 1.5, '&.Mui-disabled': { opacity: 0.45 } }}
-                    >
-                      <Box>
-                        {veces > 1 && `${veces}× `}
-                        {sabor.nombre}
-                        {sabor.extra ? (
-                          <Box component="span" sx={{ display: 'block', fontSize: '0.75rem', color: COLORS.muted }}>
-                            +{formatMoney(sabor.extra)}
-                          </Box>
-                        ) : null}
-                      </Box>
-                    </ButtonBase>
-                    {veces > 0 && cantidadSabores > 1 && (
-                      <IconButton
-                        aria-label={`Quitar ${sabor.nombre}`}
-                        onClick={() => quitarSabor(sabor.nombre)}
-                        size="small"
-                        sx={{ position: 'absolute', top: '50%', right: 6, transform: 'translateY(-50%)', backgroundColor: '#fff', width: 36, height: 36 }}
+            {sinSabores ? (
+              <Alert severity="warning">No hay sabores activos para este producto. Revisa el catálogo en Administración.</Alert>
+            ) : (
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(3, 1fr)' }, gap: 1 }}>
+                {producto.sabores.map((sabor) => {
+                  const veces = sabores[sabor.id] ?? 0;
+                  const recargo = presentacion.recargos[sabor.id];
+                  return (
+                    <Box key={sabor.id} sx={{ position: 'relative' }}>
+                      <ButtonBase
+                        onClick={() => elegirSabor(sabor.id)}
+                        disabled={!veces && faltan <= 0 && cantidadSabores > 1}
+                        sx={{ ...opcionSx(veces > 0), width: '100%', pr: veces && cantidadSabores > 1 ? 6 : 1.5, '&.Mui-disabled': { opacity: 0.45 } }}
                       >
-                        <Remove fontSize="small" />
-                      </IconButton>
-                    )}
-                  </Box>
-                );
-              })}
-            </Box>
+                        <Box>
+                          {veces > 1 && `${veces}× `}
+                          {sabor.nombre}
+                          {recargo ? <Nota>+{formatMoney(recargo)}</Nota> : sabor.especial ? <Nota>Especial</Nota> : null}
+                        </Box>
+                      </ButtonBase>
+                      {veces > 0 && cantidadSabores > 1 && (
+                        <IconButton
+                          aria-label={`Quitar ${sabor.nombre}`}
+                          onClick={() => quitarSabor(sabor.id)}
+                          size="small"
+                          sx={{ position: 'absolute', top: '50%', right: 6, transform: 'translateY(-50%)', backgroundColor: COLORS.surface, width: 36, height: 36 }}
+                        >
+                          <Remove fontSize="small" />
+                        </IconButton>
+                      )}
+                    </Box>
+                  );
+                })}
+              </Box>
+            )}
           </Seccion>
         )}
 
-        {opciones.extras && (
+        {producto.extras.length > 0 && (
           <Seccion titulo="Extras y toppings">
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(3, 1fr)' }, gap: 1 }}>
-              {opciones.extras.map((id) => (
-                <ButtonBase key={id} onClick={() => toggleExtra(id)} sx={opcionSx(extras.includes(id))}>
+              {producto.extras.map((extra) => (
+                <ButtonBase key={extra.id} onClick={() => toggleExtra(extra.id)} sx={opcionSx(extras.includes(extra.id))}>
                   <Box>
-                    {EXTRAS[id].nombre}
-                    <Box component="span" sx={{ display: 'block', fontSize: '0.75rem', color: COLORS.muted }}>
-                      {EXTRAS[id].precio ? `+${formatMoney(EXTRAS[id].precio)}` : 'Sin costo'}
-                    </Box>
+                    {extra.nombre}
+                    <Nota>{extra.precio ? `+${formatMoney(extra.precio)}` : 'Sin costo'}</Nota>
                   </Box>
                 </ButtonBase>
               ))}
@@ -199,10 +218,11 @@ const Contenido = ({ producto, linea, onConfirm, onClose }) => {
           </Seccion>
         )}
 
-        <Seccion titulo="Notas para preparación">
+        <Seccion titulo={esPromo ? '¿Qué lleva el combo?' : 'Notas para preparación'}>
           <TextField
             fullWidth
-            placeholder="Ej: sin chile, poca crema, en vaso aparte…"
+            autoFocus={esPromo}
+            placeholder={esPromo ? 'Ej: Papas locas + agua de horchata 1/2 L' : 'Ej: sin chile, poca crema, en vaso aparte…'}
             value={notas}
             onChange={(e) => setNotas(e.target.value)}
             sx={{ '& .MuiOutlinedInput-root': { backgroundColor: COLORS.inputBg, borderRadius: 2, fontSize: '1rem', '& fieldset': { borderColor: 'transparent' } } }}
@@ -227,7 +247,7 @@ const Contenido = ({ producto, linea, onConfirm, onClose }) => {
         <Button
           variant="contained"
           disableElevation
-          disabled={faltan > 0}
+          disabled={faltan > 0 || sinSabores}
           onClick={() => onConfirm(configuracion, cantidad)}
           sx={{
             flex: 1,
@@ -243,7 +263,7 @@ const Contenido = ({ producto, linea, onConfirm, onClose }) => {
             '&:hover': { backgroundColor: COLORS.redHover },
           }}
         >
-          <span>{faltan > 0 ? `Elige ${faltan} sabor${faltan > 1 ? 'es' : ''} más` : linea ? 'Guardar cambios' : 'Agregar a la orden'}</span>
+          <span>{faltan > 0 && !sinSabores ? `Elige ${faltan} sabor${faltan > 1 ? 'es' : ''} más` : linea ? 'Guardar cambios' : 'Agregar a la orden'}</span>
           <span>{formatMoney(precio * cantidad)}</span>
         </Button>
       </Box>

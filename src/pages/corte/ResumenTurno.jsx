@@ -31,7 +31,7 @@ const ResumenTurno = ({
   titulo = 'Resumen del turno',
   subtitulo = `${formatLongDate(new Date(resumen.desde))} · Ventas desde las ${hora(resumen.desde)} hrs`,
   chips = [
-    { label: `Turno ${TURNO.nombre}`, bg: COLORS.yellowSoft, color: '#5c4a00' },
+    { label: `Turno ${TURNO.nombre}`, bg: COLORS.yellowSoft, color: COLORS.yellowText },
     { label: `Caja #${TERMINAL.numero} · ${user?.nombre ?? ''}`, bg: COLORS.blueSoft, color: COLORS.blueText },
   ],
   inicio,

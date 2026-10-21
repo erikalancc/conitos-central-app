@@ -1,10 +1,14 @@
-import { Avatar, Box, Button, Chip, Typography } from '@mui/material';
-import { LockOutlined } from '@mui/icons-material';
+import { useEffect, useState } from 'react';
+import { Avatar, Box, Button, Chip, IconButton, Tooltip, Typography } from '@mui/material';
+import { DarkModeOutlined, LightModeOutlined, LockOutlined } from '@mui/icons-material';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import logoConitos from '../assets/logo-conitos.png';
+import { puedeEntrar } from '../auth/roles';
 import { clearSession, getSession } from '../auth/session';
+import { refrescarSesion } from '../services/authService';
 import { TERMINAL } from '../data/dummy';
 import useClock from '../hooks/useClock';
+import useModoColor from '../hooks/useModoColor';
 import { COLORS, safe } from '../theme';
 import { formatLongDate, formatTime } from '../utils/format';
 
@@ -14,20 +18,38 @@ const YEAR = new Date().getFullYear();
 const PANTALLA_COMPLETA = ['/pos'];
 
 const NAV_ITEMS = [
-  { to: '/pos', label: 'Terminal POS' },
-  { to: '/corte', label: 'Corte de Caja' },
-  { to: '/historial', label: 'Historial' },
+  { to: '/pos', label: 'Terminal POS', modulo: 'pos' },
+  { to: '/corte', label: 'Corte de Caja', modulo: 'corte' },
+  { to: '/historial', label: 'Historial', modulo: 'historial' },
+  { to: '/admin', label: 'Administración', modulo: 'admin' },
 ];
 
 const Clock = () => {
   const now = useClock();
   return (
     <Box sx={{ display: { xs: 'none', sm: 'block', md: 'none', lg: 'block' }, textAlign: 'right', lineHeight: 1.2 }}>
-      <Typography sx={{ fontWeight: 600, fontSize: '1.15rem', fontVariantNumeric: 'tabular-nums', color: COLORS.ink }}>
+      <Typography sx={{ fontWeight: 600, fontSize: '1.15rem', fontVariantNumeric: 'tabular-nums', color: COLORS.brandText }}>
         {formatTime(now)}
       </Typography>
-      <Typography sx={{ fontSize: '0.72rem', color: COLORS.label }}>{formatLongDate(now)}</Typography>
+      <Typography sx={{ fontSize: '0.72rem', color: COLORS.brandText, opacity: 0.85 }}>{formatLongDate(now)}</Typography>
     </Box>
+  );
+};
+
+// Cambia entre modo día y noche (se recuerda en este equipo)
+const BotonModo = () => {
+  const { modo, alternar } = useModoColor();
+  const oscuro = modo === 'oscuro';
+  return (
+    <Tooltip title={oscuro ? 'Cambiar a modo día' : 'Cambiar a modo noche'}>
+      <IconButton
+        onClick={alternar}
+        aria-label={oscuro ? 'Cambiar a modo día' : 'Cambiar a modo noche'}
+        sx={{ width: 48, height: 48, borderRadius: 2.5, color: COLORS.brandText, backgroundColor: COLORS.brandSoft, '&:hover': { backgroundColor: 'rgba(255, 255, 255, 0.26)' } }}
+      >
+        {oscuro ? <LightModeOutlined /> : <DarkModeOutlined />}
+      </IconButton>
+    </Tooltip>
   );
 };
 
@@ -40,13 +62,13 @@ const MainNav = ({ sx }) => (
         gap: 0.5,
         p: 0.5,
         borderRadius: 2.5,
-        backgroundColor: COLORS.inputBg,
+        backgroundColor: COLORS.brandSoft,
         overflowX: 'auto',
       },
       sx,
     ]}
   >
-    {NAV_ITEMS.map((item) => (
+    {NAV_ITEMS.filter((item) => puedeEntrar(getSession(), item.modulo)).map((item) => (
       <Button
         key={item.to}
         component={NavLink}
@@ -60,11 +82,12 @@ const MainNav = ({ sx }) => (
           textTransform: 'none',
           fontWeight: 600,
           fontSize: '0.9rem',
-          color: COLORS.label,
+          color: COLORS.brandText,
+          '&:hover': { backgroundColor: COLORS.brandSoft },
           '&.active': {
-            backgroundColor: '#fff',
-            color: COLORS.blueText,
-            boxShadow: '0 1px 3px rgba(15, 23, 42, 0.1)',
+            backgroundColor: COLORS.brandActive,
+            color: COLORS.brandActiveText,
+            boxShadow: '0 1px 3px rgba(15, 23, 42, 0.18)',
           },
         }}
       >
@@ -75,6 +98,14 @@ const MainNav = ({ sx }) => (
 );
 
 const AppLayout = () => {
+  // Rol y nombre al día al entrar: si cambiaron, el menú y los permisos se ajustan sin volver a iniciar sesión
+  const [, setVersionSesion] = useState(0);
+  useEffect(() => {
+    refrescarSesion()
+      .then(() => setVersionSesion((v) => v + 1))
+      .catch(() => {});
+  }, []);
+
   const navigate = useNavigate();
   const user = getSession();
   const pantallaCompleta = PANTALLA_COMPLETA.includes(useLocation().pathname);
@@ -92,8 +123,8 @@ const AppLayout = () => {
         sx={{
           flexShrink: 0,
           zIndex: (theme) => theme.zIndex.appBar,
-          backgroundColor: '#fff',
-          borderBottom: `1px solid ${COLORS.border}`,
+          backgroundColor: COLORS.brand,
+          boxShadow: '0 2px 8px rgba(15, 23, 42, 0.12)',
           pt: safe('top', 12),
           pb: 1.5,
           pl: { xs: safe('left', 16), lg: safe('left', 24) },
@@ -110,28 +141,28 @@ const AppLayout = () => {
                 width: 44,
                 height: 44,
                 backgroundColor: '#fff',
-                border: `2px solid ${COLORS.blueSoft}`,
+                border: '2px solid rgba(255, 255, 255, 0.6)',
                 '& img': { objectFit: 'contain', p: 0.25 },
               }}
             />
             <Box sx={{ minWidth: 0, lineHeight: 1.2 }}>
-              <Typography noWrap sx={{ fontWeight: 700, fontSize: '1.05rem', color: COLORS.ink }}>
+              <Typography noWrap sx={{ fontWeight: 700, fontSize: '1.05rem', color: COLORS.brandText }}>
                 Conitos Central
               </Typography>
-              <Typography noWrap sx={{ fontSize: '0.72rem', color: COLORS.muted }}>
+              <Typography noWrap sx={{ fontSize: '0.72rem', color: COLORS.brandText, opacity: 0.85 }}>
                 Terminal #{TERMINAL.numero} · {TERMINAL.sucursal}
               </Typography>
             </Box>
             <Chip
               size="small"
-              icon={<Box sx={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: COLORS.blue }} />}
+              icon={<Box sx={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: COLORS.yellow }} />}
               label="En Línea • Conectado"
               sx={{
                 display: { xs: 'none', xl: 'inline-flex' },
                 pl: 0.75,
                 ml: 1,
-                backgroundColor: COLORS.inputBg,
-                color: COLORS.label,
+                backgroundColor: COLORS.brandSoft,
+                color: COLORS.brandText,
                 fontSize: '0.72rem',
               }}
             />
@@ -143,6 +174,8 @@ const AppLayout = () => {
           <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 1.5 }, ml: 'auto' }}>
             <Clock />
 
+            <BotonModo />
+
             {/* Usuario */}
             <Box
               sx={{
@@ -152,14 +185,14 @@ const AppLayout = () => {
                 p: { xs: 0, sm: 0.75 },
                 pl: { sm: 1.5 },
                 borderRadius: 2.5,
-                backgroundColor: { sm: COLORS.inputBg, md: 'transparent', lg: COLORS.inputBg },
+                backgroundColor: { sm: COLORS.brandSoft, md: 'transparent', lg: COLORS.brandSoft },
               }}
             >
               <Box sx={{ display: { xs: 'none', sm: 'block', md: 'none', lg: 'block' }, textAlign: 'right', lineHeight: 1.2 }}>
-                <Typography noWrap sx={{ fontWeight: 600, fontSize: '0.88rem', color: COLORS.ink, maxWidth: 160 }}>
+                <Typography noWrap sx={{ fontWeight: 600, fontSize: '0.88rem', color: COLORS.brandText, maxWidth: 160 }}>
                   {user?.nombre}
                 </Typography>
-                <Typography sx={{ fontWeight: 600, fontSize: '0.72rem', color: COLORS.blueText }}>{user?.rol}</Typography>
+                <Typography sx={{ fontWeight: 600, fontSize: '0.72rem', color: COLORS.brandText, opacity: 0.85 }}>{user?.rol}</Typography>
               </Box>
               <Avatar
                 src={logoConitos}
@@ -179,10 +212,10 @@ const AppLayout = () => {
                 borderRadius: 2.5,
                 textTransform: 'none',
                 fontWeight: 600,
-                color: COLORS.label,
-                backgroundColor: COLORS.inputBg,
+                color: COLORS.brandText,
+                backgroundColor: COLORS.brandSoft,
                 '& .MuiButton-startIcon': { mr: { xs: 0, sm: 1, md: 0, lg: 1 }, ml: 0 },
-                '&:hover': { backgroundColor: '#e2e7ee' },
+                '&:hover': { backgroundColor: 'rgba(255, 255, 255, 0.26)' },
               }}
             >
               <Box component="span" sx={{ display: { xs: 'none', sm: 'inline', md: 'none', lg: 'inline' } }}>
@@ -237,7 +270,7 @@ const AppLayout = () => {
           pb: safe('bottom', 12),
           px: { xs: 2, lg: 3 },
           borderTop: `1px solid ${COLORS.border}`,
-          backgroundColor: '#fff',
+          backgroundColor: COLORS.surface,
           fontSize: '0.72rem',
           color: COLORS.label,
           textAlign: 'center',

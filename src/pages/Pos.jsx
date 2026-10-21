@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   Badge,
   Box,
   Button,
   ButtonBase,
+  CircularProgress,
   Drawer,
   InputAdornment,
   ListItemText,
@@ -17,15 +19,18 @@ import {
 import { Close, FilterList, KeyboardArrowUp, LocalOfferOutlined, Search, Star, StarBorder } from '@mui/icons-material';
 import { getSession } from '../auth/session';
 import useAnchoAjustable from '../hooks/useAnchoAjustable';
-import { CATEGORIAS, METODOS_PAGO_ACTIVOS, PRODUCTOS } from '../data/catalogo';
-import { registrarVenta, guardarOrden } from '../services/ventasService';
+import { mensajeDeError } from '../api/axiosClient';
+import { METODOS_PAGO_ACTIVOS } from '../data/catalogo';
+import { obtenerCatalogo } from '../services/catalogoService';
+import { contarVendidosPorProducto, guardarOrden, registrarVenta } from '../services/ventasService';
 import { COLORS } from '../theme';
 import { formatMoney } from '../utils/format';
 import OrdenPanel from './pos/OrdenPanel';
 import PersonalizarDialog from './pos/PersonalizarDialog';
 import ProductoCard from './pos/ProductoCard';
 import VentaCompletadaDialog from './pos/VentaCompletadaDialog';
-import { usePedido } from './pos/pedido';
+import { actualizarPrecios, adaptarCatalogo } from './pos/catalogoPos';
+import { configuracionInicial, usePedido } from './pos/pedido';
 
 const ORDENAMIENTOS = [
   { id: 'popular', label: 'Más vendidos', comparar: (a, b) => b.popularidad - a.popularidad },
@@ -48,7 +53,7 @@ const toolbarButtonSx = (activo) => ({
   fontWeight: 600,
   fontSize: '0.95rem',
   color: activo ? COLORS.blueText : COLORS.label,
-  backgroundColor: activo ? COLORS.blueSoft : '#fff',
+  backgroundColor: activo ? COLORS.blueSoft : COLORS.surface,
   border: `1px solid ${activo ? COLORS.blue : COLORS.border}`,
   whiteSpace: 'nowrap',
   '& .MuiButton-startIcon': { mr: { xs: 0, md: 1 }, ml: 0 },
@@ -69,11 +74,24 @@ const Pos = () => {
   const [filtrosAnchor, setFiltrosAnchor] = useState(null);
   const [personalizar, setPersonalizar] = useState(null);
   const [metodo, setMetodo] = useState('efectivo');
+  const [tipoTarjeta, setTipoTarjeta] = useState('debito');
   const [recibido, setRecibido] = useState(null);
   const [cobrando, setCobrando] = useState(false);
   const [venta, setVenta] = useState(null);
   const [ordenAbierta, setOrdenAbierta] = useState(false);
   const [aviso, setAviso] = useState('');
+  const [catalogo, setCatalogo] = useState(null);
+  const [errorCatalogo, setErrorCatalogo] = useState('');
+
+  // Catálogo vigente de la BD (solo lo activo); "más vendidos" sale de las ventas de esta terminal
+  const cargarCatalogo = () =>
+    obtenerCatalogo()
+      .then((api) => setCatalogo(adaptarCatalogo(api, { vendidos: contarVendidosPorProducto() })))
+      .catch((error) => setErrorCatalogo(mensajeDeError(error, 'No se pudo cargar el catálogo.')));
+
+  useEffect(() => {
+    cargarCatalogo();
+  }, []);
 
   // El monto recibido solo vale si cubre el total actual
   const recibidoValido = recibido !== null && recibido >= totales.total ? recibido : null;
@@ -81,11 +99,11 @@ const Pos = () => {
   const productos = useMemo(() => {
     const termino = normalizar(busqueda.trim());
     const comparar = ORDENAMIENTOS.find((o) => o.id === ordenamiento).comparar;
-    return PRODUCTOS.filter((p) => categoria === 'todos' || p.categoria === categoria)
+    return (catalogo?.productos ?? []).filter((p) => categoria === 'todos' || p.categoria === categoria)
       .filter((p) => !soloFavoritos || p.favorito)
       .filter((p) => !termino || normalizar(`${p.nombre} ${p.descripcion}`).includes(termino))
       .sort(comparar);
-  }, [busqueda, categoria, soloFavoritos, ordenamiento]);
+  }, [catalogo, busqueda, categoria, soloFavoritos, ordenamiento]);
 
   const cantidadEnOrden = useMemo(() => {
     const conteo = {};
@@ -108,8 +126,8 @@ const Pos = () => {
   }, []);
 
   const agregarProducto = (producto) => {
-    if (producto.opciones) setPersonalizar({ producto });
-    else orden.agregar(producto);
+    if (producto.personalizable) setPersonalizar({ producto });
+    else orden.agregar(producto, configuracionInicial(producto));
   };
 
   const handleConfirmarPersonalizacion = (configuracion, cantidad) => {
@@ -120,7 +138,7 @@ const Pos = () => {
   };
 
   const handleModificar = (linea) => {
-    const producto = PRODUCTOS.find((p) => p.id === linea.productoId);
+    const producto = catalogo?.productos.find((p) => p.id === linea.productoId);
     if (producto) setPersonalizar({ producto, linea });
   };
 
@@ -132,26 +150,49 @@ const Pos = () => {
     }
   };
 
+  // El API detectó precios distintos: se recarga el catálogo y se vuelve a tasar la orden
+  const actualizarCatalogoDeOrden = async () => {
+    try {
+      const nuevo = adaptarCatalogo(await obtenerCatalogo(), { vendidos: contarVendidosPorProducto() });
+      const { lineas, quitadas } = actualizarPrecios(pedido.lineas, nuevo);
+      setCatalogo(nuevo);
+      orden.reemplazarLineas(lineas);
+      setRecibido(null);
+      setAviso(
+        quitadas.length
+          ? `Se actualizaron los precios y se quitó lo que ya no está disponible: ${quitadas.join(', ')}. Revisa la orden.`
+          : 'Se actualizaron los precios del catálogo. Revisa el nuevo total y cobra de nuevo.'
+      );
+    } catch (error) {
+      setAviso(mensajeDeError(error, 'No se pudo actualizar el catálogo.'));
+    }
+  };
+
   const handleCobrar = async () => {
     setCobrando(true);
     try {
       const pagado = metodo === 'efectivo' ? (recibidoValido ?? totales.total) : totales.total;
-      const registro = await registrarVenta({
-        folio: pedido.folio,
-        usuarioId: user.id,
-        cliente: pedido.cliente,
-        servicio: pedido.servicio,
-        lineas: pedido.lineas,
-        descuento: pedido.descuento,
-        totales,
-        metodo,
-        recibido: pagado,
-        cambio: pagado - totales.total,
-      });
+      const registro = await registrarVenta(
+        {
+          folio: pedido.folio,
+          usuarioId: user.id,
+          cliente: pedido.cliente,
+          servicio: pedido.servicio,
+          lineas: pedido.lineas,
+          descuento: pedido.descuento,
+          totales,
+          metodo,
+          tipoTarjeta: metodo === 'tarjeta' ? tipoTarjeta : null,
+          recibido: pagado,
+          cambio: pagado - totales.total,
+        },
+        catalogo.metodosPago[metodo === 'tarjeta' ? tipoTarjeta : metodo]
+      );
       setOrdenAbierta(false);
       setVenta(registro);
-    } catch {
-      setAviso('No se pudo registrar la venta. Intenta de nuevo.');
+    } catch (error) {
+      if (error.response?.status === 409) await actualizarCatalogoDeOrden();
+      else setAviso(mensajeDeError(error, 'No se pudo registrar la venta. Intenta de nuevo.'));
     } finally {
       setCobrando(false);
     }
@@ -162,6 +203,7 @@ const Pos = () => {
     setVenta(null);
     setRecibido(null);
     setMetodo('efectivo');
+    setTipoTarjeta('debito');
   };
 
   const handleGuardar = async () => {
@@ -175,6 +217,8 @@ const Pos = () => {
     orden,
     metodo,
     onMetodo: setMetodo,
+    tipoTarjeta,
+    onTipoTarjeta: setTipoTarjeta,
     recibido: recibidoValido,
     onRecibido: setRecibido,
     cobrando,
@@ -184,7 +228,35 @@ const Pos = () => {
     onModificar: handleModificar,
   };
 
-  const categorias = [{ id: 'todos', label: 'Todos' }, ...CATEGORIAS];
+  const categorias = [{ id: 'todos', label: 'Todos' }, ...(catalogo?.categorias ?? [])];
+
+  if (!catalogo) {
+    return (
+      <Box sx={{ height: '100%', minHeight: 320, display: 'grid', placeItems: 'center', p: 3, textAlign: 'center' }}>
+        {errorCatalogo ? (
+          <Box sx={{ maxWidth: 420 }}>
+            <Alert severity="error" sx={{ textAlign: 'left' }}>
+              {errorCatalogo}
+            </Alert>
+            <Button
+              onClick={() => {
+                setErrorCatalogo('');
+                cargarCatalogo();
+              }}
+              sx={{ mt: 2, minHeight: 44, textTransform: 'none', fontWeight: 700 }}
+            >
+              Reintentar
+            </Button>
+          </Box>
+        ) : (
+          <Box>
+            <CircularProgress />
+            <Typography sx={{ mt: 1.5, color: COLORS.muted }}>Cargando catálogo…</Typography>
+          </Box>
+        )}
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ display: 'flex', height: { md: '100%' }, minHeight: 0 }}>
@@ -213,7 +285,7 @@ const Pos = () => {
                 '& .MuiOutlinedInput-root': {
                   minHeight: 52,
                   borderRadius: 3,
-                  backgroundColor: '#fff',
+                  backgroundColor: COLORS.surface,
                   fontSize: '1rem',
                   '& fieldset': { borderColor: COLORS.border },
                 },
@@ -283,7 +355,7 @@ const Pos = () => {
                     fontSize: '0.92rem',
                     fontWeight: 600,
                     color: activa ? '#fff' : esPromo ? COLORS.red : COLORS.label,
-                    backgroundColor: activa ? COLORS.blueText : '#fff',
+                    backgroundColor: activa ? COLORS.blueText : COLORS.surface,
                     border: `1px solid ${activa ? COLORS.blueText : COLORS.border}`,
                   }}
                 >
@@ -337,7 +409,7 @@ const Pos = () => {
               px: { xs: 1.5, sm: 2 },
               pt: 1.5,
               pb: 'max(12px, env(safe-area-inset-bottom))',
-              backgroundColor: '#fff',
+              backgroundColor: COLORS.surface,
               borderTop: `1px solid ${COLORS.border}`,
               boxShadow: '0 -6px 16px rgba(15, 23, 42, 0.08)',
             }}
@@ -472,7 +544,7 @@ const Pos = () => {
 
       <Snackbar
         open={Boolean(aviso)}
-        autoHideDuration={2500}
+        autoHideDuration={4500}
         onClose={() => setAviso('')}
         message={aviso}
         anchorOrigin={{ vertical: 'top', horizontal: 'center' }}

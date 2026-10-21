@@ -2,18 +2,22 @@ import { useReducer } from 'react';
 import { EXTRAS, FOLIO_INICIAL, IVA } from '../../data/catalogo';
 import { formatMoney } from '../../utils/format';
 
-// Línea de orden:
-// { lineId, productoId, nombre, emoji, categoria, precioBase, cantidad,
-//   presentacion, sabores: [{ nombre, cantidad, extra }], extras: [idExtra], notas }
+// Línea de orden (ids de la BD para registrar la venta en el API):
+// { lineId, productoId, idPresentacion, idPromocion, nombre, emoji, categoria, precioBase, cantidad,
+//   presentacion, sabores: [{ id, nombre, cantidad, extra }], extras: [{ id, nombre, precio }], notas }
+// Las ventas anteriores guardaban los extras como claves del catálogo local; se siguen leyendo.
+
+const datosExtra = (extra) => (typeof extra === 'object' ? extra : EXTRAS[extra] ?? { nombre: extra, precio: 0 });
+const claveExtra = (extra) => (typeof extra === 'object' ? extra.id : extra);
 
 export const precioUnitario = (linea) =>
   linea.precioBase +
   linea.sabores.reduce((suma, s) => suma + (s.extra ?? 0) * s.cantidad, 0) +
-  linea.extras.reduce((suma, id) => suma + (EXTRAS[id]?.precio ?? 0), 0);
+  linea.extras.reduce((suma, extra) => suma + (datosExtra(extra).precio ?? 0), 0);
 
 export const importeLinea = (linea) => precioUnitario(linea) * linea.cantidad;
 
-// "Vaso | Sabores: 1× Vainilla, 1× Piñón (+$15.00) | Topping: Chispas de chocolate"
+// "Grande (2 bolas) | Sabores: 1× Vainilla, 1× Piñón (+$20.00) | Extras: Bola extra helado regular"
 export const describirLinea = (linea) => {
   const partes = [];
   if (linea.presentacion) partes.push(linea.presentacion);
@@ -23,9 +27,22 @@ export const describirLinea = (linea) => {
       .join(', ');
     partes.push(`Sabores: ${sabores}`);
   }
-  if (linea.extras.length) partes.push(`Extras: ${linea.extras.map((id) => EXTRAS[id]?.nombre).join(', ')}`);
+  if (linea.extras.length) partes.push(`Extras: ${linea.extras.map((extra) => datosExtra(extra).nombre).join(', ')}`);
   if (linea.notas) partes.push(linea.notas);
   return partes.join(' | ');
+};
+
+// Configuración de un producto que se agrega sin personalizar (su primera presentación)
+export const configuracionInicial = (producto) => {
+  const presentacion = producto.presentaciones?.[0];
+  return {
+    idPresentacion: presentacion?.id ?? null,
+    presentacion: producto.presentaciones?.length > 1 ? presentacion.nombre : null,
+    precioBase: presentacion?.precio ?? producto.precio,
+    sabores: [],
+    extras: [],
+    notas: '',
+  };
 };
 
 export const calcularTotales = (lineas, descuento) => {
@@ -52,7 +69,7 @@ export const montosSugeridos = (total) => {
   return [...sugeridos].slice(0, 4);
 };
 
-const configuracionVacia = { presentacion: null, sabores: [], extras: [], notas: '' };
+const configuracionVacia = { idPresentacion: null, presentacion: null, sabores: [], extras: [], notas: '' };
 
 // Mismas opciones = misma línea (se suma la cantidad en lugar de duplicar)
 const mismaConfiguracion = (a, b) =>
@@ -60,7 +77,7 @@ const mismaConfiguracion = (a, b) =>
   a.presentacion === b.presentacion &&
   a.notas === b.notas &&
   JSON.stringify(a.sabores) === JSON.stringify(b.sabores) &&
-  JSON.stringify([...a.extras].sort()) === JSON.stringify([...b.extras].sort());
+  JSON.stringify(a.extras.map(claveExtra).sort()) === JSON.stringify(b.extras.map(claveExtra).sort());
 
 const estadoInicial = {
   lineas: [],
@@ -82,6 +99,7 @@ const reducer = (state, action) => {
         nombre: producto.nombre,
         emoji: producto.emoji,
         categoria: producto.categoria,
+        idPromocion: producto.idPromocion ?? null,
         precioBase: producto.precio,
         cantidad,
         ...configuracionVacia,
@@ -118,6 +136,8 @@ const reducer = (state, action) => {
       return { ...state, servicio: action.servicio };
     case 'cliente':
       return { ...state, cliente: action.cliente };
+    case 'reemplazarLineas':
+      return { ...state, lineas: action.lineas };
     case 'vaciar':
       return { ...estadoInicial, folio: state.folio, servicio: state.servicio };
     case 'nueva':
@@ -140,6 +160,7 @@ export const usePedido = () => {
     setDescuento: (descuento) => dispatch({ type: 'descuento', descuento }),
     setServicio: (servicio) => dispatch({ type: 'servicio', servicio }),
     setCliente: (cliente) => dispatch({ type: 'cliente', cliente }),
+    reemplazarLineas: (lineas) => dispatch({ type: 'reemplazarLineas', lineas }),
     vaciar: () => dispatch({ type: 'vaciar' }),
     nuevaOrden: () => dispatch({ type: 'nueva' }),
   };

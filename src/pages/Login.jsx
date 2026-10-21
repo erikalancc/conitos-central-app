@@ -23,8 +23,9 @@ import {
 } from '@mui/icons-material';
 import { Navigate, useNavigate } from 'react-router-dom';
 import logoConitos from '../assets/logo-conitos.png';
-import { getSession, saveSession } from '../auth/session';
-import { DUMMY_USER } from '../data/dummy';
+import { mensajeDeError } from '../api/axiosClient';
+import { getSession } from '../auth/session';
+import { login } from '../services/authService';
 import { COLORS, SHORT_SCREEN, safe } from '../theme';
 
 // Patrón de conitos para el fondo del panel azul
@@ -46,7 +47,7 @@ const inputSx = {
     // 16px mínimo: evita que iOS haga zoom al enfocar el campo
     fontSize: '1rem',
     '& fieldset': { borderColor: 'transparent' },
-    '&:hover fieldset': { borderColor: '#d5dbe3' },
+    '&:hover fieldset': { borderColor: COLORS.hover },
     '&.Mui-focused fieldset': { borderColor: COLORS.blue, borderWidth: 1.5 },
   },
 };
@@ -59,11 +60,11 @@ const labelSx = {
   color: COLORS.label,
 };
 
-const iconSx = { fontSize: 22, color: '#334155' };
+const iconSx = { fontSize: 22, color: COLORS.muted };
 
 const Login = () => {
-  const [usuario, setUsuario] = useState('smartinez');
-  const [password, setPassword] = useState('1234');
+  const [usuario, setUsuario] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -71,22 +72,23 @@ const Login = () => {
 
   if (getSession()) return <Navigate to="/inicio" replace />;
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    setLoading(true);
 
-    // Simulación de la respuesta del API
-    setTimeout(() => {
-      if (usuario === DUMMY_USER.usuario && password === DUMMY_USER.password) {
-        const { password: _omit, ...session } = DUMMY_USER;
-        saveSession(session);
-        navigate('/inicio', { replace: true });
-        return;
-      }
-      setError('Usuario o contraseña incorrectos (prueba con smartinez / 1234)');
+    if (!usuario.trim() || !password) {
+      setError('Ingresa tu usuario y contraseña.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await login(usuario, password);
+      navigate('/inicio', { replace: true });
+    } catch (err) {
+      setError(mensajeDeError(err, 'No se pudo iniciar sesión. Intenta de nuevo.'));
       setLoading(false);
-    }, 900);
+    }
   };
 
   return (
@@ -230,8 +232,8 @@ const Login = () => {
             sx={{
               px: 0.5,
               mb: 1.5,
-              backgroundColor: '#dfe8f2',
-              color: '#1e3a5f',
+              backgroundColor: COLORS.hover,
+              color: COLORS.label,
               fontWeight: 700,
               fontSize: { xs: '0.62rem', md: '0.68rem' },
               letterSpacing: 0.3,
@@ -262,7 +264,7 @@ const Login = () => {
                 pb: { xs: 3, md: 3.5 },
                 mb: 2.5,
                 borderRadius: 3,
-                border: '1px solid #e8ecf1',
+                border: `1px solid ${COLORS.border}`,
                 boxShadow: '0 2px 8px rgba(15, 23, 42, 0.04)',
               }}
             >
@@ -275,7 +277,7 @@ const Login = () => {
                 autoComplete="username"
                 autoCapitalize="none"
                 autoCorrect="off"
-                placeholder="smartinez"
+                placeholder="Tu usuario"
                 value={usuario}
                 onChange={(e) => setUsuario(e.target.value)}
                 sx={{ ...inputSx, mb: 2.25 }}
@@ -342,7 +344,7 @@ const Login = () => {
                 letterSpacing: 0.3,
                 boxShadow: '0 6px 16px rgba(238, 42, 71, 0.3)',
                 '&:hover': { backgroundColor: COLORS.redHover },
-                '&.Mui-disabled': { backgroundColor: COLORS.red, color: '#fff', opacity: 0.7 },
+                '&.Mui-disabled': { backgroundColor: COLORS.red, color: COLORS.surface, opacity: 0.7 },
               }}
             >
               {loading ? 'Verificando…' : 'Iniciar Sesión'}
@@ -362,8 +364,8 @@ const Login = () => {
               gap: 1,
             }}
           >
-            <Sensors sx={{ fontSize: 20, color: '#5b8fb9', flexShrink: 0 }} />
-            <Typography sx={{ fontSize: { xs: '0.75rem', md: '0.8rem' }, color: '#475569' }}>
+            <Sensors sx={{ fontSize: 20, color: COLORS.blue, flexShrink: 0 }} />
+            <Typography sx={{ fontSize: { xs: '0.75rem', md: '0.8rem' }, color: COLORS.muted }}>
               O aproxima tu gafete o pulsera <strong>RFID</strong> al lector para acceso inmediato
             </Typography>
           </Box>
@@ -374,7 +376,7 @@ const Login = () => {
           sx={{
             mt: 4,
             pt: 2,
-            borderTop: '1px solid #e2e8f0',
+            borderTop: `1px solid ${COLORS.border}`,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',

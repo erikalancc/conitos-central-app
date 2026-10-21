@@ -1,8 +1,11 @@
-import { Box, Button, Chip, Divider, Typography } from '@mui/material';
+import { useState } from 'react';
+import { Alert, Box, Button, Chip, Divider, Typography } from '@mui/material';
 import { CreditCard, InventoryOutlined, PictureAsPdfOutlined } from '@mui/icons-material';
+import { mensajeDeError } from '../../api/axiosClient';
 import IconTile from '../../components/IconTile';
 import Panel from '../../components/Panel';
 import { DENOMINACIONES } from '../../data/catalogo';
+import { corteDesdeApi, obtenerCorte } from '../../services/corteService';
 import { COLORS } from '../../theme';
 import { formatMoney } from '../../utils/format';
 import { COLOR_METODO, estadoDiferencia, tituloSeccionSx } from '../corte/estilos';
@@ -48,19 +51,31 @@ const Seccion = ({ icono, bg, color, titulo, children }) => (
 // Resultado de un corte cerrado: conteo de billetes, cuadre de efectivo y conciliación de tarjeta
 const CorteCuadre = ({ corte }) => {
   const { efectivo, tarjeta, resumen } = corte;
+  const [descargando, setDescargando] = useState(false);
+  const [error, setError] = useState('');
   const piezas = [...DENOMINACIONES.billetes, ...DENOMINACIONES.monedas].filter((valor) => efectivo.conteo?.[valor]);
 
-  const descargar = () =>
-    descargarTicketCorte({
-      tipo: 'Z',
-      folio: corte.id,
-      fecha: new Date(corte.fecha),
-      resumen,
-      conteo: efectivo.conteo ?? {},
-      terminal: { monto: tarjeta.terminal, vouchers: tarjeta.vouchers },
-      observaciones: corte.observaciones,
-      user: { nombre: corte.usuarioNombre ?? '-' },
-    });
+  // El listado trae solo totales: para el ticket se pide el corte con todas sus ventas
+  const descargar = async () => {
+    setDescargando(true);
+    try {
+      const completo = corteDesdeApi(await obtenerCorte(corte.id));
+      descargarTicketCorte({
+        tipo: 'Z',
+        folio: completo.id,
+        fecha: new Date(completo.fecha),
+        resumen: completo.resumen,
+        conteo: completo.efectivo.conteo,
+        terminal: { monto: completo.tarjeta.terminal, vouchers: completo.tarjeta.vouchers },
+        observaciones: completo.observaciones,
+        user: { nombre: completo.usuarioNombre ?? '-' },
+      });
+    } catch (error) {
+      setError(mensajeDeError(error, 'No se pudo descargar el ticket.'));
+    } finally {
+      setDescargando(false);
+    }
+  };
 
   return (
     <Panel sx={{ p: { xs: 2, md: 2.5 } }}>
@@ -77,7 +92,7 @@ const CorteCuadre = ({ corte }) => {
       </Box>
 
       <Seccion icono={<InventoryOutlined />} bg={COLOR_METODO.efectivo.suave} color={COLOR_METODO.efectivo.fuerte} titulo="Efectivo">
-        <Box sx={{ p: 1.25, borderRadius: 2, backgroundColor: '#f8fafc', border: `1px solid ${COLORS.border}` }}>
+        <Box sx={{ p: 1.25, borderRadius: 2, backgroundColor: COLORS.surfaceAlt, border: `1px solid ${COLORS.border}` }}>
           <Typography sx={{ mb: 0.5, fontSize: '0.72rem', fontWeight: 700, letterSpacing: 0.6, color: COLORS.muted }}>CONTEO DE GAVETA</Typography>
           {piezas.length ? (
             piezas.map((valor) => (
@@ -124,6 +139,7 @@ const CorteCuadre = ({ corte }) => {
         fullWidth
         startIcon={<PictureAsPdfOutlined />}
         onClick={descargar}
+        disabled={descargando}
         sx={{
           mt: 2,
           minHeight: 48,
@@ -132,11 +148,16 @@ const CorteCuadre = ({ corte }) => {
           fontWeight: 700,
           color: COLORS.ink,
           backgroundColor: COLORS.inputBg,
-          '&:hover': { backgroundColor: '#e2e7ee' },
+          '&:hover': { backgroundColor: COLORS.hover },
         }}
       >
-        Descargar ticket del corte (PDF)
+        {descargando ? 'Preparando ticket…' : 'Descargar ticket del corte (PDF)'}
       </Button>
+      {error && (
+        <Alert severity="error" sx={{ mt: 1 }}>
+          {error}
+        </Alert>
+      )}
     </Panel>
   );
 };

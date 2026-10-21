@@ -1,6 +1,8 @@
 import { Box, ButtonBase, Chip, Typography } from '@mui/material';
 import { ChevronRight, IcecreamOutlined, Inventory2Outlined, ReceiptLongOutlined, Search } from '@mui/icons-material';
 import { Link } from 'react-router-dom';
+import { puedeEntrar } from '../../auth/roles';
+import { getSession } from '../../auth/session';
 import IconTile from '../../components/IconTile';
 import { CORTE_ANTERIOR, LOTES_PENDIENTES } from '../../data/dummy';
 import { COLORS } from '../../theme';
@@ -9,6 +11,7 @@ import { formatMoney } from '../../utils/format';
 const ACCESOS = [
   {
     to: '/pos',
+    modulo: 'pos',
     titulo: 'Terminal de Ventas',
     descripcion: 'Conos dobles, sencillos, paletas y sundaes',
     icono: <IcecreamOutlined />,
@@ -17,6 +20,7 @@ const ACCESOS = [
   },
   {
     to: '/corte',
+    modulo: 'corte',
     titulo: 'Corte Anterior & Arqueo',
     descripcion: `Ver resumen de corte Z y cierre previo (${formatMoney(CORTE_ANTERIOR)})`,
     icono: <ReceiptLongOutlined />,
@@ -25,15 +29,17 @@ const ACCESOS = [
   },
   {
     to: '/inventario',
+    modulo: 'inventario',
     titulo: 'Recepción de Inventario',
     descripcion: 'Ingreso de barquillos, botes de helado y bases',
     icono: <Inventory2Outlined />,
     bg: COLORS.yellowSoft,
-    color: '#8a6d00',
+    color: COLORS.yellowText,
     badge: `${LOTES_PENDIENTES} Lotes`,
   },
   {
     to: '/precios',
+    modulo: 'precios',
     titulo: 'Consulta de Precios',
     descripcion: 'Exploración rápida sin afectar la venta activa',
     icono: <Search />,
@@ -54,7 +60,7 @@ const AccesosRapidos = () => (
     </Box>
 
     <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: { xs: 1.5, md: 2 } }}>
-      {ACCESOS.map((acceso) => (
+      {ACCESOS.filter((acceso) => puedeEntrar(getSession(), acceso.modulo)).map((acceso) => (
         <ButtonBase
           key={acceso.to}
           component={Link}
@@ -69,11 +75,11 @@ const AccesosRapidos = () => (
             p: 2,
             textAlign: 'left',
             borderRadius: 3,
-            backgroundColor: '#fff',
+            backgroundColor: COLORS.surface,
             border: `1px solid ${COLORS.border}`,
             boxShadow: '0 1px 3px rgba(15, 23, 42, 0.04)',
             transition: 'box-shadow 0.2s, border-color 0.2s',
-            '&:hover': { borderColor: '#cfd8e3', boxShadow: '0 6px 16px rgba(15, 23, 42, 0.08)' },
+            '&:hover': { borderColor: COLORS.hover, boxShadow: '0 6px 16px rgba(15, 23, 42, 0.08)' },
           }}
         >
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>

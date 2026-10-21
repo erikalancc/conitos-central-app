@@ -1,14 +1,13 @@
 import { Box, Button, ButtonBase, Typography } from '@mui/material';
 import { Add, Bolt } from '@mui/icons-material';
-import { ESTILO_CATEGORIA } from '../../data/catalogo';
 import { COLORS } from '../../theme';
 import { formatMoney } from '../../utils/format';
 
 const BADGE_COLORES = {
   Popular: { bg: COLORS.blueText, color: '#fff' },
   Premium: { bg: COLORS.blueText, color: '#fff' },
-  Personalizable: { bg: COLORS.yellow, color: '#5c4a00' },
-  Nuevo: { bg: '#16a34a', color: '#fff' },
+  Personalizable: { bg: COLORS.yellow, color: COLORS.onYellow },
+  Nuevo: { bg: COLORS.greenText, color: '#fff' },
   Promo: { bg: COLORS.red, color: '#fff' },
 };
 
@@ -21,7 +20,7 @@ const cardSx = {
   height: '100%',
   p: 1,
   borderRadius: 3,
-  backgroundColor: '#fff',
+  backgroundColor: COLORS.surface,
   border: `1px solid ${COLORS.border}`,
   boxShadow: '0 1px 3px rgba(15, 23, 42, 0.04)',
   transition: 'transform 0.1s, box-shadow 0.2s',
@@ -85,16 +84,16 @@ const OfertaCard = ({ producto, enOrden, onAgregar }) => (
         <Bolt sx={{ fontSize: 14 }} /> Oferta del Día
       </Box>
       {!enOrden && (
-        <Typography sx={{ fontSize: '0.8rem', fontWeight: 600, color: '#6b5400', textDecoration: 'line-through' }}>
+        <Typography sx={{ fontSize: '0.8rem', fontWeight: 600, color: COLORS.onYellow, textDecoration: 'line-through' }}>
           {formatMoney(producto.precioAnterior)}
         </Typography>
       )}
     </Box>
     <Box sx={{ my: 'auto', py: 2 }}>
-      <Typography sx={{ fontWeight: 800, fontSize: { xs: '1.15rem', md: '1.3rem' }, lineHeight: 1.2, color: '#3d3100' }}>
+      <Typography sx={{ fontWeight: 800, fontSize: { xs: '1.15rem', md: '1.3rem' }, lineHeight: 1.2, color: COLORS.onYellow }}>
         {producto.nombre}
       </Typography>
-      <Typography sx={{ mt: 0.5, fontSize: '0.82rem', color: '#6b5400' }}>{producto.descripcion}</Typography>
+      <Typography sx={{ mt: 0.5, fontSize: '0.82rem', color: COLORS.onYellow }}>{producto.descripcion}</Typography>
     </Box>
     <Box
       sx={{
@@ -148,7 +147,7 @@ const ProductoCard = ({ producto, enOrden, onAgregar }) => {
           borderRadius: 2,
           display: 'grid',
           placeItems: 'center',
-          background: ESTILO_CATEGORIA[producto.categoria],
+          background: producto.fondo,
           overflow: 'hidden',
         }}
       >
@@ -201,6 +200,9 @@ const ProductoCard = ({ producto, enOrden, onAgregar }) => {
 
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, px: 0.5, pt: 1 }}>
         <Box>
+          {producto.desde && !producto.precioAnterior && (
+            <Typography sx={{ fontSize: '0.72rem', color: COLORS.muted, lineHeight: 1 }}>desde</Typography>
+          )}
           {producto.precioAnterior && (
             <Typography sx={{ fontSize: '0.75rem', color: COLORS.muted, textDecoration: 'line-through', lineHeight: 1 }}>
               {formatMoney(producto.precioAnterior)}

@@ -64,14 +64,14 @@ const ConciliacionTarjeta = ({ sistema, transacciones, terminal, onTerminal }) =
         </Box>
       </Box>
 
-      <Box sx={{ mt: 2, p: 2, borderRadius: 3, backgroundColor: '#f8fafc', border: `1px solid ${COLORS.border}` }}>
+      <Box sx={{ mt: 2, p: 2, borderRadius: 3, backgroundColor: COLORS.surfaceAlt, border: `1px solid ${COLORS.border}` }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', color: COLORS.label }}>
           <span>Cobrado con tarjeta (sistema)</span>
           <Typography component="span" sx={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
             {formatMoney(sistema)}
           </Typography>
         </Box>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 0.75, fontSize: '0.85rem', color: vouchersDiferentes ? '#a16207' : COLORS.muted }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 0.75, fontSize: '0.85rem', color: vouchersDiferentes ? COLORS.amberText : COLORS.muted }}>
           <span>Ventas con tarjeta / vouchers</span>
           <span>
             {transacciones} / {terminal.vouchers || '—'}

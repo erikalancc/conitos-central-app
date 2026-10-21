@@ -48,7 +48,7 @@ const VentaCompletadaDialog = ({ venta, onImprimir, onNuevaVenta }) => (
     {venta && (
       <Box sx={{ p: 3, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
         <Box sx={{ textAlign: 'center' }}>
-          <CheckCircle sx={{ fontSize: 56, color: '#16a34a' }} />
+          <CheckCircle sx={{ fontSize: 56, color: COLORS.greenText }} />
           <Typography component="h2" sx={{ mt: 0.5, fontWeight: 800, fontSize: '1.4rem', color: COLORS.ink }}>
             Venta completada
           </Typography>
@@ -58,9 +58,9 @@ const VentaCompletadaDialog = ({ venta, onImprimir, onNuevaVenta }) => (
           </Typography>
 
           {venta.cambio > 0 && (
-            <Box sx={{ mt: 2, p: 1.5, borderRadius: 3, backgroundColor: '#dcfce7' }}>
-              <Typography sx={{ fontSize: '0.85rem', fontWeight: 600, color: '#15803d' }}>CAMBIO A ENTREGAR</Typography>
-              <Typography sx={{ fontWeight: 800, fontSize: '2.2rem', color: '#15803d', lineHeight: 1.1 }}>{formatMoney(venta.cambio)}</Typography>
+            <Box sx={{ mt: 2, p: 1.5, borderRadius: 3, backgroundColor: COLORS.greenSoft }}>
+              <Typography sx={{ fontSize: '0.85rem', fontWeight: 600, color: COLORS.greenText }}>CAMBIO A ENTREGAR</Typography>
+              <Typography sx={{ fontWeight: 800, fontSize: '2.2rem', color: COLORS.greenText, lineHeight: 1.1 }}>{formatMoney(venta.cambio)}</Typography>
             </Box>
           )}
         </Box>
@@ -77,7 +77,7 @@ const VentaCompletadaDialog = ({ venta, onImprimir, onNuevaVenta }) => (
             overflowY: 'auto',
             px: 1.5,
             borderRadius: 3,
-            backgroundColor: '#f8fafc',
+            backgroundColor: COLORS.surfaceAlt,
             border: `1px solid ${COLORS.border}`,
             '& > :not(:last-child)': { borderBottom: `1px dashed ${COLORS.border}` },
           }}
@@ -98,7 +98,7 @@ const VentaCompletadaDialog = ({ venta, onImprimir, onNuevaVenta }) => (
               />
             </>
           )}
-          <Renglon label="Método" value={METODOS_PAGO.find((m) => m.id === venta.metodo)?.label} />
+          <Renglon label="Método" value={venta.metodoPago ?? METODOS_PAGO.find((m) => m.id === venta.metodo)?.label} />
           {venta.metodo === 'efectivo' && <Renglon label="Recibido" value={formatMoney(venta.recibido)} />}
           <Divider sx={{ my: 0.5 }} />
           <Renglon label="Total cobrado" value={formatMoney(venta.totales.total)} fuerte color={COLORS.ink} />

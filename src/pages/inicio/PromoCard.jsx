@@ -10,7 +10,7 @@ const PromoCard = () => (
       p: { xs: 2, md: 2.5 },
       borderRadius: 3,
       backgroundColor: COLORS.yellow,
-      color: '#5c4a00',
+      color: COLORS.onYellow,
       boxShadow: '0 4px 14px rgba(251, 225, 0, 0.35)',
     }}
   >
@@ -19,14 +19,14 @@ const PromoCard = () => (
         size="small"
         icon={<Campaign sx={{ fontSize: '1rem !important', color: '#8a6d00 !important' }} />}
         label={PROMO.etiqueta.toUpperCase()}
-        sx={{ backgroundColor: 'rgba(138, 109, 0, 0.12)', color: '#6b5400', fontWeight: 700, fontSize: '0.7rem' }}
+        sx={{ backgroundColor: 'rgba(138, 109, 0, 0.12)', color: COLORS.onYellow, fontWeight: 700, fontSize: '0.7rem' }}
       />
       <Typography sx={{ fontWeight: 700, fontSize: '0.78rem' }}>{PROMO.horario}</Typography>
     </Box>
-    <Typography component="h2" sx={{ mt: 1.5, fontWeight: 800, fontSize: { xs: '1.3rem', md: '1.45rem' }, color: '#3d3100' }}>
+    <Typography component="h2" sx={{ mt: 1.5, fontWeight: 800, fontSize: { xs: '1.3rem', md: '1.45rem' }, color: COLORS.onYellow }}>
       {PROMO.titulo}
     </Typography>
-    <Typography sx={{ mt: 0.5, fontSize: '0.85rem', color: '#8a6d00' }}>{PROMO.descripcion}</Typography>
+    <Typography sx={{ mt: 0.5, fontSize: '0.85rem', color: COLORS.onYellow }}>{PROMO.descripcion}</Typography>
   </Box>
 );
 

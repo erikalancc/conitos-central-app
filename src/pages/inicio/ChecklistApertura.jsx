@@ -13,45 +13,76 @@ import {
   useMediaQuery,
 } from '@mui/material';
 import { AcUnit, ArrowForward, BadgeOutlined, Close, DeviceThermostat, FactCheckOutlined } from '@mui/icons-material';
-import { CHECKLIST_APERTURA, ESTADOS_LOTE, RANGOS_TEMPERATURA, TURNO } from '../../data/dummy';
+import { mensajeDeError } from '../../api/axiosClient';
+import { TURNO } from '../../data/dummy';
 import { guardarChecklist, omitirChecklist } from '../../services/checklistService';
 import { COLORS } from '../../theme';
 
-const ESTADO_INICIAL = {
-  items: Object.fromEntries(CHECKLIST_APERTURA.map((item) => [item.id, false])),
-  estadoLote: 'conforme',
-  congelador: '',
-  refrigerador: '',
+// items vienen de GET /checklist/apertura. Según tipo_campo, además del check se captura:
+//   SELECT -> una opción de config.opciones ({ valor, texto, nivel: ok|aviso|error })
+//   TEMPERATURE_PAIR -> una lectura por sensor de config.sensores ({ clave, nombre, min, max })
+//   TEXT -> texto libre
+const estadoInicial = (items) => ({
+  items: Object.fromEntries(items.map((item) => [item.id, false])),
+  valores: Object.fromEntries(
+    items.map((item) => [item.id, item.tipo_campo === 'SELECT' ? (item.config?.opciones?.[0]?.valor ?? '') : ''])
+  ),
+  temperaturas: Object.fromEntries(
+    items
+      .filter((item) => item.tipo_campo === 'TEMPERATURE_PAIR')
+      .map((item) => [item.id, Object.fromEntries((item.config?.sensores ?? []).map((s) => [s.clave, '']))])
+  ),
   comentarios: '',
-};
+});
+
+const opcionElegida = (item, form) => item.config?.opciones?.find((o) => o.valor === form.valores[item.id]);
+
+const sensores = (item) => (item.tipo_campo === 'TEMPERATURE_PAIR' ? (item.config?.sensores ?? []) : []);
 
 const CHIP_COLORES = {
-  ok: { bg: '#dcfce7', color: '#15803d' },
-  aviso: { bg: COLORS.yellowSoft, color: '#8a6d00' },
+  ok: { bg: COLORS.greenSoft, color: COLORS.greenText },
+  aviso: { bg: COLORS.yellowSoft, color: COLORS.yellowText },
   error: { bg: COLORS.redSoft, color: COLORS.redHover },
   pendiente: { bg: COLORS.inputBg, color: COLORS.muted },
 };
 
 const fueraDeRango = (valor, { min, max }) => valor !== '' && (Number(valor) < min || Number(valor) > max);
 
-const validar = (form) => {
+const temperaturaFueraDeRango = (item, form) => sensores(item).some((s) => fueraDeRango(form.temperaturas[item.id][s.clave], s));
+
+const validar = (form, items) => {
   const errores = {};
-  const pendientes = CHECKLIST_APERTURA.filter((item) => !form.items[item.id]).map((item) => item.id);
+  const pendientes = items.filter((item) => item.es_obligatorio && !form.items[item.id]).map((item) => item.id);
   if (pendientes.length) errores.items = pendientes;
 
-  ['congelador', 'refrigerador'].forEach((campo) => {
-    if (form[campo] === '' || Number.isNaN(Number(form[campo]))) errores[campo] = 'Captura la temperatura';
-  });
+  items.forEach((item) =>
+    sensores(item).forEach((s) => {
+      const valor = form.temperaturas[item.id][s.clave];
+      if (valor === '' || Number.isNaN(Number(valor))) errores[`temp-${item.id}-${s.clave}`] = 'Captura la temperatura';
+    })
+  );
 
-  const hayIncidencia =
-    form.estadoLote !== 'conforme' ||
-    fueraDeRango(form.congelador, RANGOS_TEMPERATURA.congelador) ||
-    fueraDeRango(form.refrigerador, RANGOS_TEMPERATURA.refrigerador);
+  const hayIncidencia = items.some(
+    (item) => (opcionElegida(item, form)?.nivel ?? 'ok') !== 'ok' || temperaturaFueraDeRango(item, form)
+  );
   if (hayIncidencia && !form.comentarios.trim()) {
     errores.comentarios = 'Describe la incidencia (lote o temperatura fuera de rango)';
   }
   return errores;
 };
+
+// Cuerpo de POST /checklist/apertura
+const armarPayload = (form, items) => ({
+  respuestas: items.map((item) => ({
+    id_item: item.id,
+    cumplido: form.items[item.id],
+    ...(item.tipo_campo === 'SELECT' || item.tipo_campo === 'TEXT' ? { valor: form.valores[item.id] } : {}),
+    ...(item.tipo_campo === 'TEMPERATURE_PAIR'
+      ? { temperaturas: Object.fromEntries(sensores(item).map((s) => [s.clave, Number(form.temperaturas[item.id][s.clave])])) }
+      : {}),
+  })),
+  comentarios: form.comentarios.trim(),
+});
 
 const ItemChip = ({ label, tipo }) => (
   <Chip
@@ -73,7 +104,7 @@ const TemperaturaInput = ({ id, label, icon, value, onChange, rango, error }) =>
       helperText={error || (fuera ? `Fuera de rango (${rango.min} a ${rango.max} °C)` : ' ')}
       placeholder="0.0"
       sx={{
-        '& .MuiOutlinedInput-root': { backgroundColor: '#fff', borderRadius: 2, fontSize: '1rem', fontWeight: 700 },
+        '& .MuiOutlinedInput-root': { backgroundColor: COLORS.surface, borderRadius: 2, fontSize: '1rem', fontWeight: 700 },
         '& .MuiFormHelperText-root': { mx: 0.5 },
       }}
       slotProps={{
@@ -94,59 +125,56 @@ const TemperaturaInput = ({ id, label, icon, value, onChange, rango, error }) =>
   );
 };
 
-const ChecklistApertura = ({ open, user, onClose, onSaved }) => {
+const ChecklistApertura = ({ open, items, user, onClose, onSaved }) => {
   const fullScreen = useMediaQuery((theme) => theme.breakpoints.down('sm'));
-  const [form, setForm] = useState(ESTADO_INICIAL);
+  const [form, setForm] = useState(() => estadoInicial(items));
   const [intentado, setIntentado] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [errorGuardado, setErrorGuardado] = useState('');
 
-  const errores = intentado ? validar(form) : {};
-  const setCampo = (campo) => (e) => setForm((prev) => ({ ...prev, [campo]: e.target.value }));
+  const errores = intentado ? validar(form, items) : {};
+  const setComentarios = (e) => setForm((prev) => ({ ...prev, comentarios: e.target.value }));
+  const setValor = (id) => (e) => setForm((prev) => ({ ...prev, valores: { ...prev.valores, [id]: e.target.value } }));
+  const setTemperatura = (id, clave) => (e) =>
+    setForm((prev) => ({ ...prev, temperaturas: { ...prev.temperaturas, [id]: { ...prev.temperaturas[id], [clave]: e.target.value } } }));
   const toggleItem = (id) => setForm((prev) => ({ ...prev, items: { ...prev.items, [id]: !prev.items[id] } }));
 
   const chipDeItem = (item) => {
     if (!form.items[item.id]) return { label: 'Pendiente', tipo: 'pendiente' };
-    if (item.id === 'vitrina' && form.estadoLote !== 'conforme') {
-      return form.estadoLote === 'rechazado' ? { label: 'Rechazado', tipo: 'error' } : { label: 'Con observaciones', tipo: 'aviso' };
-    }
-    if (
-      item.id === 'refrigeracion' &&
-      (fueraDeRango(form.congelador, RANGOS_TEMPERATURA.congelador) ||
-        fueraDeRango(form.refrigerador, RANGOS_TEMPERATURA.refrigerador))
-    ) {
-      return { label: 'Fuera de rango', tipo: 'error' };
-    }
-    return { label: item.etiquetaOk, tipo: 'ok' };
+    const opcion = opcionElegida(item, form);
+    if (opcion && opcion.nivel !== 'ok') return { label: opcion.texto, tipo: opcion.nivel };
+    if (temperaturaFueraDeRango(item, form)) return { label: 'Fuera de rango', tipo: 'error' };
+    return { label: item.etiqueta_ok ?? 'Listo', tipo: 'ok' };
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIntentado(true);
     setErrorGuardado('');
-    if (Object.keys(validar(form)).length) return;
+    if (Object.keys(validar(form, items)).length) return;
 
     setGuardando(true);
     try {
-      const registro = await guardarChecklist({
-        usuarioId: user.id,
-        turno: TURNO.numero,
-        items: form.items,
-        estadoLote: form.estadoLote,
-        temperaturas: { congelador: Number(form.congelador), refrigerador: Number(form.refrigerador) },
-        comentarios: form.comentarios.trim(),
-      });
+      const registro = await guardarChecklist(armarPayload(form, items));
       onSaved(registro);
-    } catch {
-      setErrorGuardado('No se pudo guardar el checklist. Intenta de nuevo.');
+    } catch (err) {
+      setErrorGuardado(mensajeDeError(err, 'No se pudo guardar el checklist. Intenta de nuevo.'));
     } finally {
       setGuardando(false);
     }
   };
 
   const handleOmitir = async () => {
-    await omitirChecklist(user.id);
-    onClose();
+    setErrorGuardado('');
+    setGuardando(true);
+    try {
+      await omitirChecklist();
+      onClose();
+    } catch (err) {
+      setErrorGuardado(mensajeDeError(err, 'No se pudo omitir el checklist. Intenta de nuevo.'));
+    } finally {
+      setGuardando(false);
+    }
   };
 
   return (
@@ -203,7 +231,7 @@ const ChecklistApertura = ({ open, user, onClose, onSaved }) => {
             <Chip
               size="small"
               label="OBLIGATORIO"
-              sx={{ height: 22, fontWeight: 800, fontSize: '0.68rem', letterSpacing: 0.5, backgroundColor: COLORS.yellow, color: '#3d3100' }}
+              sx={{ height: 22, fontWeight: 800, fontSize: '0.68rem', letterSpacing: 0.5, backgroundColor: COLORS.yellow, color: COLORS.onYellow }}
             />
           </Box>
           <Typography sx={{ mt: 0.25, fontSize: { xs: '0.8rem', sm: '0.9rem' }, opacity: 0.92 }}>
@@ -213,7 +241,7 @@ const ChecklistApertura = ({ open, user, onClose, onSaved }) => {
         <IconButton
           aria-label="Cerrar checklist"
           onClick={onClose}
-          sx={{ width: 48, height: 48, flexShrink: 0, color: '#fff', backgroundColor: 'rgba(0, 0, 0, 0.15)', '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.25)' } }}
+          sx={{ width: 48, height: 48, flexShrink: 0, color: COLORS.surface, backgroundColor: 'rgba(0, 0, 0, 0.15)', '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.25)' } }}
         >
           <Close />
         </IconButton>
@@ -221,7 +249,7 @@ const ChecklistApertura = ({ open, user, onClose, onSaved }) => {
 
       {/* CONTENIDO */}
       <Box sx={{ flex: 1, overflowY: 'auto', px: { xs: 2, sm: 3.5 }, py: 3, display: 'grid', gap: 2 }}>
-        {CHECKLIST_APERTURA.map((item, index) => {
+        {items.map((item, index) => {
           const chip = chipDeItem(item);
           const pendiente = errores.items?.includes(item.id);
           return (
@@ -231,7 +259,7 @@ const ChecklistApertura = ({ open, user, onClose, onSaved }) => {
                 p: { xs: 1.5, sm: 2 },
                 borderRadius: 3,
                 border: `1px solid ${pendiente ? COLORS.red : COLORS.border}`,
-                backgroundColor: pendiente ? '#fff7f8' : '#fafbfc',
+                backgroundColor: pendiente ? '#fff7f8' : COLORS.surfaceAlt,
               }}
             >
               <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: { xs: 1, sm: 1.5 } }}>
@@ -247,10 +275,10 @@ const ChecklistApertura = ({ open, user, onClose, onSaved }) => {
                     <Typography sx={{ fontWeight: 600, fontSize: { xs: '0.98rem', sm: '1.05rem' }, color: COLORS.ink }}>
                       {index + 1}. {item.titulo}
                     </Typography>
-                    {item.tag && (
+                    {item.etiqueta && (
                       <Chip
                         size="small"
-                        label={item.tag.toUpperCase()}
+                        label={item.etiqueta.toUpperCase()}
                         sx={{ height: 20, fontSize: '0.62rem', fontWeight: 700, backgroundColor: '#ffedd5', color: '#c2410c' }}
                       />
                     )}
@@ -267,34 +295,34 @@ const ChecklistApertura = ({ open, user, onClose, onSaved }) => {
                 <ItemChip {...chip} />
               </Box>
 
-              {item.id === 'vitrina' && (
+              {item.tipo_campo === 'SELECT' && (
                 <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1.5, mt: 1.5, ml: { xs: 0, sm: 6.5 } }}>
-                  <Typography component="label" htmlFor="estado-lote" sx={{ fontSize: '0.88rem', color: COLORS.muted }}>
-                    Estado de lote:
+                  <Typography component="label" htmlFor={`opcion-${item.id}`} sx={{ fontSize: '0.88rem', color: COLORS.muted }}>
+                    {item.config?.etiqueta ?? 'Estado'}:
                   </Typography>
                   <TextField
-                    id="estado-lote"
+                    id={`opcion-${item.id}`}
                     select
                     size="small"
-                    value={form.estadoLote}
-                    onChange={setCampo('estadoLote')}
+                    value={form.valores[item.id]}
+                    onChange={setValor(item.id)}
                     slotProps={{ select: { native: true } }}
                     sx={{
                       minWidth: 230,
                       flex: { xs: 1, sm: 'none' },
-                      '& .MuiOutlinedInput-root': { backgroundColor: '#fff', borderRadius: 2, fontSize: '1rem', minHeight: 44 },
+                      '& .MuiOutlinedInput-root': { backgroundColor: COLORS.surface, borderRadius: 2, fontSize: '1rem', minHeight: 44 },
                     }}
                   >
-                    {ESTADOS_LOTE.map((estado) => (
-                      <option key={estado.value} value={estado.value}>
-                        {estado.label}
+                    {(item.config?.opciones ?? []).map((opcion) => (
+                      <option key={opcion.valor} value={opcion.valor}>
+                        {opcion.texto}
                       </option>
                     ))}
                   </TextField>
                 </Box>
               )}
 
-              {item.id === 'refrigeracion' && (
+              {item.tipo_campo === 'TEMPERATURE_PAIR' && (
                 <Box
                   sx={{
                     display: 'grid',
@@ -304,25 +332,31 @@ const ChecklistApertura = ({ open, user, onClose, onSaved }) => {
                     ml: { xs: 0, sm: 6.5 },
                   }}
                 >
-                  <TemperaturaInput
-                    id="temp-congelador"
-                    label="Congelador"
-                    icon={<AcUnit fontSize="small" />}
-                    value={form.congelador}
-                    onChange={setCampo('congelador')}
-                    rango={RANGOS_TEMPERATURA.congelador}
-                    error={errores.congelador}
-                  />
-                  <TemperaturaInput
-                    id="temp-refrigerador"
-                    label="Refrigerador"
-                    icon={<DeviceThermostat fontSize="small" />}
-                    value={form.refrigerador}
-                    onChange={setCampo('refrigerador')}
-                    rango={RANGOS_TEMPERATURA.refrigerador}
-                    error={errores.refrigerador}
-                  />
+                  {sensores(item).map((sensor, i) => (
+                    <TemperaturaInput
+                      key={sensor.clave}
+                      id={`temp-${item.id}-${sensor.clave}`}
+                      label={sensor.nombre}
+                      icon={i === 0 ? <AcUnit fontSize="small" /> : <DeviceThermostat fontSize="small" />}
+                      value={form.temperaturas[item.id][sensor.clave]}
+                      onChange={setTemperatura(item.id, sensor.clave)}
+                      rango={sensor}
+                      error={errores[`temp-${item.id}-${sensor.clave}`]}
+                    />
+                  ))}
                 </Box>
+              )}
+
+              {item.tipo_campo === 'TEXT' && (
+                <TextField
+                  id={`texto-${item.id}`}
+                  fullWidth
+                  size="small"
+                  value={form.valores[item.id]}
+                  onChange={setValor(item.id)}
+                  slotProps={{ htmlInput: { maxLength: 255, 'aria-label': item.titulo } }}
+                  sx={{ mt: 1.5, ml: { xs: 0, sm: 6.5 }, width: { sm: 'calc(100% - 52px)' }, '& .MuiOutlinedInput-root': { backgroundColor: COLORS.surface, borderRadius: 2, fontSize: '1rem' } }}
+                />
               )}
             </Box>
           );
@@ -343,10 +377,10 @@ const ChecklistApertura = ({ open, user, onClose, onSaved }) => {
             maxRows={5}
             placeholder="Reportar faltantes, detalles en equipo o avisos para el siguiente turno..."
             value={form.comentarios}
-            onChange={setCampo('comentarios')}
+            onChange={setComentarios}
             error={Boolean(errores.comentarios)}
             helperText={errores.comentarios}
-            sx={{ '& .MuiOutlinedInput-root': { backgroundColor: '#fafbfc', borderRadius: 2, fontSize: '1rem' } }}
+            sx={{ '& .MuiOutlinedInput-root': { backgroundColor: COLORS.surfaceAlt, borderRadius: 2, fontSize: '1rem' } }}
           />
         </Box>
 
@@ -382,7 +416,7 @@ const ChecklistApertura = ({ open, user, onClose, onSaved }) => {
           px: { xs: 2, sm: 3.5 },
           pt: 2,
           pb: { xs: 'max(16px, env(safe-area-inset-bottom))', sm: 3 },
-          backgroundColor: '#fff',
+          backgroundColor: COLORS.surface,
         }}
       >
         {(errorGuardado || Object.keys(errores).length > 0) && (
@@ -415,7 +449,7 @@ const ChecklistApertura = ({ open, user, onClose, onSaved }) => {
               backgroundColor: COLORS.red,
               boxShadow: '0 6px 16px rgba(227, 36, 59, 0.3)',
               '&:hover': { backgroundColor: COLORS.redHover },
-              '&.Mui-disabled': { backgroundColor: COLORS.red, color: '#fff', opacity: 0.7 },
+              '&.Mui-disabled': { backgroundColor: COLORS.red, color: COLORS.surface, opacity: 0.7 },
             }}
           >
             {guardando ? 'Guardando…' : 'Guardar y Continuar a Caja'}

@@ -2,15 +2,15 @@ import { COLORS } from '../../theme';
 
 // Colores por forma de pago: el efectivo en verde y la tarjeta en azul para distinguirlos de un vistazo
 export const COLOR_METODO = {
-  efectivo: { fuerte: '#15803d', suave: '#dcfce7', barra: '#16a34a' },
+  efectivo: { fuerte: COLORS.greenText, suave: COLORS.greenSoft, barra: COLORS.greenText },
   tarjeta: { fuerte: COLORS.blueText, suave: COLORS.blueSoft, barra: COLORS.blue },
-  spei: { fuerte: '#8a6d00', suave: COLORS.yellowSoft, barra: '#eab308' },
+  spei: { fuerte: COLORS.yellowText, suave: COLORS.yellowSoft, barra: '#eab308' },
 };
 
 // Estado de una diferencia de cuadre (contado - esperado)
 export const estadoDiferencia = (diferencia) => {
-  if (Math.abs(diferencia) < 0.005) return { label: 'Cuadrada', color: '#15803d', bg: '#dcfce7' };
-  if (diferencia > 0) return { label: 'Sobrante', color: '#a16207', bg: '#fef3c7' };
+  if (Math.abs(diferencia) < 0.005) return { label: 'Cuadrada', color: COLORS.greenText, bg: COLORS.greenSoft };
+  if (diferencia > 0) return { label: 'Sobrante', color: COLORS.amberText, bg: COLORS.amberSoft };
   return { label: 'Faltante', color: COLORS.redHover, bg: COLORS.redSoft };
 };
 
@@ -26,7 +26,7 @@ export const botonSuaveSx = {
   fontWeight: 600,
   color: COLORS.blueText,
   backgroundColor: COLORS.inputBg,
-  '&:hover': { backgroundColor: '#e2e7ee' },
+  '&:hover': { backgroundColor: COLORS.hover },
 };
 
 // Total del conteo físico: { denominación: piezas }

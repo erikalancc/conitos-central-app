@@ -1,4 +1,5 @@
 import { claveDia } from '../../services/corteService';
+import { metodoDesdeNombre } from '../../services/ventasService';
 
 const redondear = (valor) => Math.round(valor * 100) / 100;
 const sumar = (lista, obtener) => redondear(lista.reduce((suma, item) => suma + obtener(item), 0));
@@ -20,55 +21,60 @@ const nombreSemana = (lunes) => {
   return `Hace ${semanas} semanas`;
 };
 
-// Totales comparables entre un día y una semana
-const totalizar = (cortes) => ({
-  neto: sumar(cortes, (c) => c.resumen.neto),
-  efectivo: sumar(cortes, (c) => c.resumen.efectivo),
-  tarjeta: sumar(cortes, (c) => c.resumen.tarjeta),
-  tickets: cortes.reduce((suma, c) => suma + c.resumen.tickets, 0),
-  difEfectivo: sumar(cortes, (c) => c.efectivo.diferencia),
-  difTarjeta: sumar(cortes, (c) => c.tarjeta.diferencia),
-});
+const totalPorMetodo = (dia, metodo) => sumar(dia.por_metodo.filter((m) => metodoDesdeNombre(m.nombre) === metodo), (m) => m.total);
 
-// Día con sus cortes (normalmente uno por turno)
-export const agruparPorDia = (cortes) => {
-  const dias = new Map();
+/**
+ * Días del API (GET /ventas/resumen) con los cortes de caja de ese día (GET /caja/cortes).
+ * Un corte cuenta para el día en que se abrió el turno.
+ */
+export const armarDias = (diasApi, cortes) => {
+  const cortesPorDia = {};
   cortes.forEach((corte) => {
-    const clave = claveDia(corte.fecha);
-    if (!dias.has(clave)) dias.set(clave, []);
-    dias.get(clave).push(corte);
+    const clave = claveDia(corte.desde);
+    (cortesPorDia[clave] ??= []).push(corte);
   });
-  return [...dias.entries()].map(([clave, delDia]) => ({
-    clave,
-    fecha: new Date(`${clave}T12:00:00`),
-    cortes: delDia,
-    cajeros: [...new Set(delDia.map((c) => c.usuarioNombre).filter(Boolean))],
-    demo: delDia.every((c) => c.demo),
-    ...totalizar(delDia),
-  }));
+
+  return diasApi.map((d) => {
+    const delDia = cortesPorDia[d.fecha] ?? [];
+    return {
+      clave: d.fecha,
+      fecha: new Date(`${d.fecha}T12:00:00`),
+      tickets: d.tickets,
+      articulos: d.articulos,
+      neto: d.total,
+      descuento: d.descuento,
+      efectivo: totalPorMetodo(d, 'efectivo'),
+      tarjeta: totalPorMetodo(d, 'tarjeta'),
+      porMetodo: d.por_metodo,
+      vendedores: d.vendedores,
+      cortes: delDia,
+      difEfectivo: delDia.length ? sumar(delDia, (c) => c.efectivo.diferencia) : null,
+      difTarjeta: delDia.length ? sumar(delDia, (c) => c.tarjeta.diferencia) : null,
+    };
+  });
 };
 
 // Semanas (más reciente primero) con sus días
-export const agruparPorSemana = (cortes) => {
+export const agruparPorSemana = (dias) => {
   const semanas = new Map();
-  agruparPorDia(cortes).forEach((dia) => {
+  dias.forEach((dia) => {
     const lunes = inicioSemana(dia.fecha);
-    const clave = lunes.toISOString();
+    const clave = claveDia(lunes);
     if (!semanas.has(clave)) semanas.set(clave, { lunes, dias: [] });
     semanas.get(clave).dias.push(dia);
   });
-  return [...semanas.values()].map(({ lunes, dias }) => {
+  return [...semanas.entries()].map(([clave, { lunes, dias: delaSemana }]) => {
     const domingo = new Date(lunes);
     domingo.setDate(lunes.getDate() + 6);
     return {
-      clave: claveDia(lunes),
+      clave,
       nombre: nombreSemana(lunes),
       rango: `${diaCorto(lunes)} – ${diaCorto(domingo)}`,
-      dias,
-      neto: sumar(dias, (d) => d.neto),
-      efectivo: sumar(dias, (d) => d.efectivo),
-      tarjeta: sumar(dias, (d) => d.tarjeta),
-      tickets: dias.reduce((suma, d) => suma + d.tickets, 0),
+      dias: delaSemana,
+      neto: sumar(delaSemana, (d) => d.neto),
+      efectivo: sumar(delaSemana, (d) => d.efectivo),
+      tarjeta: sumar(delaSemana, (d) => d.tarjeta),
+      tickets: delaSemana.reduce((suma, d) => suma + d.tickets, 0),
     };
   });
 };

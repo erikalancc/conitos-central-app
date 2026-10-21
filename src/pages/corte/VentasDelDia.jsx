@@ -40,7 +40,7 @@ const EtiquetaMetodo = ({ metodo }) => {
 const Venta = ({ venta, metodo }) => {
   const color = COLOR_METODO[venta.metodo] ?? COLOR_METODO.tarjeta;
   return (
-    <Box sx={{ p: 1.25, borderRadius: 2.5, border: `1px solid ${COLORS.border}`, borderLeft: `4px solid ${color.barra}`, backgroundColor: '#fff' }}>
+    <Box sx={{ p: 1.25, borderRadius: 2.5, border: `1px solid ${COLORS.border}`, borderLeft: `4px solid ${color.barra}`, backgroundColor: COLORS.surface }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
         <Typography sx={{ fontWeight: 700, fontSize: '0.9rem', color: COLORS.ink }}>#{venta.folio}</Typography>
         <Typography sx={{ fontSize: '0.78rem', color: COLORS.muted }}>{hora(venta.fecha)}</Typography>
@@ -67,8 +67,11 @@ const Venta = ({ venta, metodo }) => {
           );
         })}
       </Box>
-      {(venta.totales.descuento > 0 || venta.metodo === 'efectivo' || venta.cliente) && (
+      {(venta.totales.descuento > 0 || venta.metodo === 'efectivo' || venta.cliente || venta.vendedor || venta.metodoPago) && (
         <Box sx={{ display: 'flex', flexWrap: 'wrap', columnGap: 1.5, mt: 0.75, pt: 0.75, borderTop: `1px dashed ${COLORS.border}`, fontSize: '0.72rem', color: COLORS.muted }}>
+          {venta.folioOrden && <span>Orden #{venta.folioOrden}</span>}
+          {venta.vendedor && <span>Vendió: {venta.vendedor}</span>}
+          {venta.metodo === 'tarjeta' && venta.metodoPago && <span>{venta.metodoPago}</span>}
           {venta.cliente && <span>Cliente: {venta.cliente}</span>}
           {venta.totales.descuento > 0 && (
             <Box component="span" sx={{ color: COLORS.red }}>
@@ -138,7 +141,7 @@ const VentasDelDia = ({ resumen, sx }) => {
                     alignItems: 'flex-start',
                     borderRadius: 2,
                     border: `1px solid ${activo ? (color?.barra ?? COLORS.blueText) : COLORS.border}`,
-                    backgroundColor: activo ? (color?.suave ?? COLORS.blueSoft) : '#fff',
+                    backgroundColor: activo ? (color?.suave ?? COLORS.blueSoft) : COLORS.surface,
                   }}
                 >
                   <Typography sx={{ fontSize: '0.75rem', fontWeight: 600, color: color?.fuerte ?? COLORS.blueText }}>

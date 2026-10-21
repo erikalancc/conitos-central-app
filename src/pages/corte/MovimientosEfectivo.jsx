@@ -22,7 +22,7 @@ import MontoInput from './MontoInput';
 const hora = (iso) => new Date(iso).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: false });
 
 const Movimiento = ({ icono, iconoBg, iconoColor, titulo, detalle, monto, montoColor = COLORS.ink }) => (
-  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, p: 1.5, borderRadius: 3, backgroundColor: '#f8fafc', border: `1px solid ${COLORS.border}` }}>
+  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, p: 1.5, borderRadius: 3, backgroundColor: COLORS.surfaceAlt, border: `1px solid ${COLORS.border}` }}>
     <IconTile bg={iconoBg} color={iconoColor} size={40}>
       {icono}
     </IconTile>
@@ -45,8 +45,9 @@ const MovimientoDialog = ({ open, onClose, onGuardar }) => {
 
   const handleGuardar = async () => {
     setGuardando(true);
-    await onGuardar({ tipo, monto, concepto: concepto.trim() });
+    const registrado = await onGuardar({ tipo, monto, concepto: concepto.trim() });
     setGuardando(false);
+    if (registrado === false) return;
     setMonto(0);
     setConcepto('');
   };
@@ -65,7 +66,7 @@ const MovimientoDialog = ({ open, onClose, onGuardar }) => {
             borderRadius: 2,
             backgroundColor: COLORS.inputBg,
             '& .MuiToggleButton-root': { border: 'none', borderRadius: '8px !important', minHeight: 44, textTransform: 'none', fontWeight: 600 },
-            '& .Mui-selected': { backgroundColor: '#fff !important', color: `${COLORS.blueText} !important`, boxShadow: '0 1px 3px rgba(15, 23, 42, 0.1)' },
+            '& .Mui-selected': { backgroundColor: `${COLORS.surface} !important`, color: `${COLORS.blueText} !important`, boxShadow: '0 1px 3px rgba(15, 23, 42, 0.1)' },
           }}
         >
           <ToggleButton value="retiro">Retiro (sale dinero)</ToggleButton>
@@ -96,8 +97,9 @@ const MovimientosEfectivo = ({ resumen, onRegistrar }) => {
   const [dialogo, setDialogo] = useState(false);
 
   const handleGuardar = async (movimiento) => {
-    await onRegistrar(movimiento);
-    setDialogo(false);
+    const registrado = await onRegistrar(movimiento);
+    if (registrado !== false) setDialogo(false);
+    return registrado;
   };
 
   return (
@@ -120,7 +122,7 @@ const MovimientosEfectivo = ({ resumen, onRegistrar }) => {
           iconoBg={COLORS.blueSoft}
           iconoColor={COLORS.blueText}
           titulo="Fondo inicial de apertura"
-          detalle={resumen.apertura ? `Registrado a las ${hora(resumen.apertura.fecha)} hrs` : 'Sin apertura registrada en este turno'}
+          detalle={resumen.apertura ? `Apertura a las ${hora(resumen.apertura.fecha)} hrs${resumen.apertura.usuario ? ` por ${resumen.apertura.usuario}` : ''}` : 'Sin apertura registrada en este turno'}
           monto={formatMoney(resumen.fondo)}
         />
         <Movimiento
@@ -136,12 +138,12 @@ const MovimientosEfectivo = ({ resumen, onRegistrar }) => {
           <Movimiento
             key={m.id}
             icono={m.tipo === 'retiro' ? <NorthEast /> : <SouthWest />}
-            iconoBg={m.tipo === 'retiro' ? COLORS.redSoft : '#dcfce7'}
-            iconoColor={m.tipo === 'retiro' ? COLORS.red : '#15803d'}
+            iconoBg={m.tipo === 'retiro' ? COLORS.redSoft : COLORS.greenSoft}
+            iconoColor={m.tipo === 'retiro' ? COLORS.red : COLORS.greenText}
             titulo={`${m.tipo === 'retiro' ? 'Retiro' : 'Entrada'}: ${m.concepto}`}
             detalle={`${hora(m.fecha)} hrs`}
             monto={`${m.tipo === 'retiro' ? '-' : '+'}${formatMoney(m.monto)}`}
-            montoColor={m.tipo === 'retiro' ? COLORS.red : '#15803d'}
+            montoColor={m.tipo === 'retiro' ? COLORS.red : COLORS.greenText}
           />
         ))}
       </Box>

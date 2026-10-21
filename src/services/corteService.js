@@ -1,50 +1,19 @@
-// Simulación del API de corte de caja: lee y guarda en localStorage.
-// Cuando exista el backend, reemplazar por las llamadas con axiosClient.
+import axiosClient from '../api/axiosClient';
 import { METODOS_PAGO } from '../data/catalogo';
-import { generarHistorialDemo } from '../data/historialDemo';
+import { ventaDesdeApi } from './ventasService';
 
-const VENTAS_KEY = 'ventas';
-const APERTURA_KEY = 'aperturaCaja';
-const MOVIMIENTOS_KEY = 'movimientosCaja';
-const CORTES_KEY = 'cortesCaja';
-
-const esperar = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-const leer = (key, inicial) => {
-  try {
-    return JSON.parse(localStorage.getItem(key)) ?? inicial;
-  } catch {
-    return inicial;
-  }
-};
+// Caja: turnos (apertura con fondo → movimientos → corte Z) guardados en el API
 
 const redondear = (valor) => Math.round(valor * 100) / 100;
 
-const inicioDelDia = () => {
-  const hoy = new Date();
-  hoy.setHours(0, 0, 0, 0);
-  return hoy;
+// Fecha local AAAA-MM-DD (clave de día del historial)
+export const claveDia = (fecha) => {
+  const f = new Date(fecha);
+  const dos = (n) => String(n).padStart(2, '0');
+  return `${f.getFullYear()}-${dos(f.getMonth() + 1)}-${dos(f.getDate())}`;
 };
 
-// El turno abarca lo registrado hoy después del último corte
-const inicioDelTurno = () => {
-  const ultimoCorte = leer(CORTES_KEY, []).at(-1);
-  const desde = inicioDelDia();
-  return ultimoCorte && new Date(ultimoCorte.fecha) > desde ? new Date(ultimoCorte.fecha) : desde;
-};
-
-const entre = (lista, desde, hasta = null) =>
-  lista.filter((registro) => {
-    const fecha = new Date(registro.fecha);
-    return fecha > new Date(desde) && (!hasta || fecha <= new Date(hasta));
-  });
-
-const aperturaDelTurno = () => {
-  const apertura = leer(APERTURA_KEY, null);
-  return apertura && new Date(apertura.fecha) > inicioDelTurno() ? apertura : null;
-};
-
-// Totales de un conjunto de ventas y movimientos (turno actual o corte del historial)
+// Totales de un conjunto de ventas y movimientos (turno en curso, corte o día del historial)
 export const construirResumen = ({ ventas, movimientos = [], apertura = null, fondo = apertura?.monto ?? 0, desde }) => {
   const bruto = redondear(ventas.reduce((suma, v) => suma + v.totales.subtotal, 0));
   const descuentos = redondear(ventas.reduce((suma, v) => suma + v.totales.descuento, 0));
@@ -83,59 +52,86 @@ export const construirResumen = ({ ventas, movimientos = [], apertura = null, fo
   };
 };
 
-export const calcularResumen = () => {
-  const desde = inicioDelTurno().toISOString();
+// Turno o corte del API -> resumen del front (requiere sus ventas con detalle)
+export const resumenDesdeTurno = (turno) => {
+  const ventas = (turno.ventas_detalle ?? []).map(ventaDesdeApi);
+  // Las ventas cobradas antes de abrir caja se suman al turno: "desde" es lo más temprano
+  const desde = [turno.apertura.fecha, ...ventas.map((v) => v.fecha)].reduce((a, b) => (new Date(b) < new Date(a) ? b : a));
   return construirResumen({
-    ventas: entre(leer(VENTAS_KEY, []), desde),
-    movimientos: entre(leer(MOVIMIENTOS_KEY, []), desde),
-    apertura: aperturaDelTurno(),
+    ventas,
+    movimientos: turno.movimientos,
+    apertura: { monto: turno.apertura.fondo, fecha: turno.apertura.fecha, comentario: turno.apertura.comentario, usuario: turno.apertura.usuario },
+    fondo: turno.apertura.fondo,
     desde,
   });
 };
 
-// Fecha local AAAA-MM-DD (clave de día del historial)
-export const claveDia = (fecha) => {
-  const f = new Date(fecha);
-  const dos = (n) => String(n).padStart(2, '0');
-  return `${f.getFullYear()}-${dos(f.getMonth() + 1)}-${dos(f.getDate())}`;
+// Corte cerrado del API -> forma que usan el cuadre del historial y el ticket
+export const corteDesdeApi = (corte) => ({
+  id: corte.id,
+  fecha: corte.cierre?.fecha ?? corte.apertura.fecha,
+  desde: corte.apertura.fecha,
+  usuarioNombre: corte.cierre?.usuario ?? corte.apertura.usuario,
+  efectivo: {
+    ...corte.efectivo,
+    conteo: Object.fromEntries(corte.efectivo.conteo.map((c) => [c.denominacion, c.piezas])),
+  },
+  tarjeta: corte.tarjeta,
+  observaciones: corte.observaciones,
+  // Sin ventas_detalle (listado), el resumen trae solo los totales del corte
+  resumen: corte.ventas_detalle
+    ? resumenDesdeTurno(corte)
+    : {
+        ventas: [],
+        movimientos: corte.movimientos,
+        tickets: corte.ventas.tickets,
+        neto: corte.ventas.ventas_netas,
+        efectivo: corte.ventas.ventas_efectivo,
+        tarjeta: corte.ventas.ventas_tarjeta,
+        porMetodo: [
+          { id: 'efectivo', transacciones: corte.ventas.por_metodo.filter((m) => m.nombre.toLowerCase().includes('efectivo')).reduce((s, m) => s + m.tickets, 0) },
+          { id: 'tarjeta', transacciones: corte.ventas.por_metodo.filter((m) => m.nombre.toLowerCase().includes('tarjeta')).reduce((s, m) => s + m.tickets, 0) },
+        ],
+      },
+});
+
+// GET /caja/turno — turno abierto con totales en vivo y sus ventas, o null si la caja está cerrada
+export const obtenerTurno = async () => {
+  const { data } = await axiosClient.get('/caja/turno');
+  return data.data.turno;
 };
 
-// Cortes registrados (más recientes primero), cada uno con las ventas y movimientos que abarcó
-// TODO API: axiosClient.get('/caja/cortes')
-export const obtenerHistorial = () => {
-  const ventas = leer(VENTAS_KEY, []);
-  const movimientos = leer(MOVIMIENTOS_KEY, []);
-  const reales = leer(CORTES_KEY, []).map((corte) => ({
-    ...corte,
-    resumen: construirResumen({
-      ventas: entre(ventas, corte.desde, corte.fecha),
-      movimientos: entre(movimientos, corte.desde, corte.fecha),
-      fondo: corte.efectivo.fondo,
-      desde: corte.desde,
-    }),
-  }));
-
-  // Días con corte real no se rellenan con datos de ejemplo
-  const diasReales = new Set(reales.map((c) => claveDia(c.fecha)));
-  const demo = generarHistorialDemo()
-    .filter((c) => !diasReales.has(claveDia(c.fecha)))
-    .map((corte) => ({ ...corte, resumen: construirResumen({ ventas: corte.ventas, movimientos: corte.movimientos, fondo: corte.efectivo.fondo, desde: corte.desde }) }));
-
-  return [...reales, ...demo].sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+// POST /caja/apertura — abre el turno; las ventas de hoy sin turno se le asignan
+export const abrirCaja = async ({ fondo, comentario }) => {
+  const { data } = await axiosClient.post('/caja/apertura', { fondo_inicial: fondo, comentario: comentario || null });
+  return data.data.turno;
 };
 
-// TODO API: axiosClient.post('/caja/movimientos', movimiento)
-export const registrarMovimiento = async (movimiento) => {
-  await esperar(300);
-  const registro = { ...movimiento, id: Date.now(), fecha: new Date().toISOString() };
-  localStorage.setItem(MOVIMIENTOS_KEY, JSON.stringify([...leer(MOVIMIENTOS_KEY, []), registro]));
-  return registro;
+// POST /caja/movimientos — entrada o retiro de efectivo del turno abierto
+export const registrarMovimiento = async ({ tipo, monto, concepto }) => {
+  const { data } = await axiosClient.post('/caja/movimientos', { tipo, monto, concepto });
+  return data.data.turno;
 };
 
-// TODO API: axiosClient.post('/caja/cortes', corte)
-export const registrarCorte = async (corte) => {
-  await esperar(800);
-  const registro = { ...corte, id: Date.now(), fecha: new Date().toISOString() };
-  localStorage.setItem(CORTES_KEY, JSON.stringify([...leer(CORTES_KEY, []), registro]));
-  return registro;
+// POST /caja/cierre — corte Z; el API calcula esperado y diferencias
+export const cerrarCaja = async ({ conteo, terminal, observaciones }) => {
+  const { data } = await axiosClient.post('/caja/cierre', {
+    conteo: Object.fromEntries(Object.entries(conteo).filter(([, piezas]) => piezas > 0)),
+    tarjeta_terminal: terminal.monto,
+    vouchers: terminal.vouchers || null,
+    observaciones,
+  });
+  return data.data.corte;
+};
+
+// GET /caja/cortes — cortes cerrados en un rango (por fecha de apertura)
+export const obtenerCortes = async ({ desde, hasta } = {}) => {
+  const { data } = await axiosClient.get('/caja/cortes', { params: { desde, hasta } });
+  return data.data.cortes;
+};
+
+// GET /caja/cortes/{id} — corte con todas sus ventas (para el ticket)
+export const obtenerCorte = async (id) => {
+  const { data } = await axiosClient.get(`/caja/cortes/${id}`);
+  return data.data;
 };

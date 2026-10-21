@@ -1,17 +1,20 @@
-import { useState } from 'react';
-import { Box, Button, Dialog, Divider, Snackbar, TextField, Typography } from '@mui/material';
-import { CheckCircle, LockOutlined, PrintOutlined } from '@mui/icons-material';
+import { useEffect, useMemo, useState } from 'react';
+import { Alert, Box, Button, CircularProgress, Dialog, Divider, Snackbar, TextField, Typography } from '@mui/material';
+import { CheckCircle, LockOutlined, PointOfSale, PrintOutlined } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
+import { mensajeDeError } from '../api/axiosClient';
 import { getSession } from '../auth/session';
+import IconTile from '../components/IconTile';
 import Panel from '../components/Panel';
-import { TERMINAL } from '../data/dummy';
-import { calcularResumen, registrarCorte, registrarMovimiento } from '../services/corteService';
+import { FONDO_SUGERIDO } from '../data/dummy';
+import { abrirCaja, cerrarCaja, corteDesdeApi, obtenerTurno, registrarMovimiento, resumenDesdeTurno } from '../services/corteService';
 import { COLORS } from '../theme';
 import { formatMoney } from '../utils/format';
 import ConciliacionTarjeta from './corte/ConciliacionTarjeta';
 import ConteoEfectivo from './corte/ConteoEfectivo';
 import DesglosePagos from './corte/DesglosePagos';
 import { COLOR_METODO, estadoDiferencia, totalContado } from './corte/estilos';
+import MontoInput from './corte/MontoInput';
 import MovimientosEfectivo from './corte/MovimientosEfectivo';
 import ResumenTurno from './corte/ResumenTurno';
 import { descargarTicketCorte } from './corte/ticketCorte';
@@ -43,10 +46,77 @@ const BloqueCuadre = ({ titulo, color, esperadoLabel, esperado, realLabel, real,
   );
 };
 
+// Caja sin turno abierto: se puede abrir aquí mismo con el fondo inicial
+const CajaCerrada = ({ onAbierta }) => {
+  const [fondo, setFondo] = useState(FONDO_SUGERIDO);
+  const [abriendo, setAbriendo] = useState(false);
+  const [error, setError] = useState('');
+
+  const abrir = async () => {
+    setAbriendo(true);
+    setError('');
+    try {
+      onAbierta(await abrirCaja({ fondo, comentario: '' }));
+    } catch (e) {
+      // 409: ya la abrió alguien más; se carga ese turno
+      if (e.response?.status === 409) {
+        const turno = await obtenerTurno().catch(() => null);
+        if (turno) return onAbierta(turno);
+      }
+      setError(mensajeDeError(e, 'No se pudo abrir la caja.'));
+    } finally {
+      setAbriendo(false);
+    }
+  };
+
+  return (
+    <Panel sx={{ p: { xs: 2.5, md: 4 } }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+        <IconTile bg={COLORS.blueSoft} color={COLORS.blueText} size={56}>
+          <LockOutlined />
+        </IconTile>
+        <Box sx={{ flex: 1 }}>
+          <Typography component="h1" sx={{ fontWeight: 800, fontSize: '1.3rem', color: COLORS.ink }}>
+            La caja está cerrada
+          </Typography>
+          <Typography sx={{ color: COLORS.label }}>
+            Abre caja con el fondo inicial para empezar el turno. Las ventas de hoy que se cobraron sin caja abierta se suman al turno al abrirlo.
+          </Typography>
+        </Box>
+      </Box>
+
+      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, alignItems: { sm: 'flex-end' }, gap: 1.5, mt: 3 }}>
+        <Box sx={{ flex: 1, maxWidth: { sm: 320 } }}>
+          <Typography component="label" htmlFor="fondo-apertura" sx={{ display: 'block', mb: 0.5, fontSize: '0.82rem', fontWeight: 600, color: COLORS.ink }}>
+            Fondo inicial en gaveta
+          </Typography>
+          <MontoInput id="fondo-apertura" value={fondo} onChange={setFondo} />
+        </Box>
+        <Button
+          variant="contained"
+          disableElevation
+          startIcon={<PointOfSale />}
+          disabled={abriendo}
+          onClick={abrir}
+          sx={{ minHeight: 52, px: 3, borderRadius: 3, textTransform: 'none', fontWeight: 800, backgroundColor: COLORS.red, '&:hover': { backgroundColor: COLORS.redHover } }}
+        >
+          {abriendo ? 'Abriendo caja…' : 'Abrir caja'}
+        </Button>
+      </Box>
+      {error && (
+        <Alert severity="error" sx={{ mt: 2 }}>
+          {error}
+        </Alert>
+      )}
+    </Panel>
+  );
+};
+
 const CorteCaja = () => {
   const user = getSession();
   const navigate = useNavigate();
-  const [resumen, setResumen] = useState(calcularResumen);
+  const [turno, setTurno] = useState(undefined); // undefined = cargando, null = caja cerrada
+  const [errorCarga, setErrorCarga] = useState('');
   const [conteo, setConteo] = useState({});
   const [terminal, setTerminal] = useState({ monto: 0, vouchers: 0 });
   const [observaciones, setObservaciones] = useState('');
@@ -55,12 +125,48 @@ const CorteCaja = () => {
   const [corte, setCorte] = useState(null);
   const [aviso, setAviso] = useState('');
 
-  const transaccionesTarjeta = resumen.porMetodo.find((m) => m.id === 'tarjeta')?.transacciones ?? 0;
+  useEffect(() => {
+    let vigente = true;
+    obtenerTurno()
+      .then((t) => vigente && setTurno(t))
+      .catch((e) => vigente && setErrorCarga(mensajeDeError(e, 'No se pudo consultar la caja.')));
+    return () => {
+      vigente = false;
+    };
+  }, []);
+
+  const resumen = useMemo(() => (turno ? resumenDesdeTurno(turno) : null), [turno]);
+
+  if (errorCarga) {
+    return (
+      <Panel sx={{ py: 6, textAlign: 'center' }}>
+        <Alert severity="error" sx={{ maxWidth: 480, mx: 'auto', textAlign: 'left' }}>
+          {errorCarga}
+        </Alert>
+        <Button onClick={() => window.location.reload()} sx={{ mt: 2, textTransform: 'none', fontWeight: 600 }}>
+          Reintentar
+        </Button>
+      </Panel>
+    );
+  }
+
+  if (turno === undefined) {
+    return (
+      <Panel sx={{ py: 8, textAlign: 'center' }}>
+        <CircularProgress />
+      </Panel>
+    );
+  }
+
+  // Sin turno abierto (y sin un corte recién hecho que mostrar)
+  if (!resumen && !corte) return <CajaCerrada onAbierta={setTurno} />;
+
+  const transaccionesTarjeta = resumen?.porMetodo.find((m) => m.id === 'tarjeta')?.transacciones ?? 0;
   const contado = totalContado(conteo);
-  const difEfectivo = redondear(contado - resumen.efectivoEsperado);
-  const difTarjeta = redondear(terminal.monto - resumen.tarjeta);
-  const tarjetaCapturada = terminal.monto > 0 || resumen.tarjeta === 0;
-  const efectivoContado = contado > 0 || resumen.efectivoEsperado === 0;
+  const difEfectivo = redondear(contado - (resumen?.efectivoEsperado ?? 0));
+  const difTarjeta = redondear(terminal.monto - (resumen?.tarjeta ?? 0));
+  const tarjetaCapturada = terminal.monto > 0 || resumen?.tarjeta === 0;
+  const efectivoContado = contado > 0 || resumen?.efectivoEsperado === 0;
   const hayDiferencias = Math.abs(difEfectivo) >= 0.01 || Math.abs(difTarjeta) >= 0.01;
   const faltaJustificar = hayDiferencias && !observaciones.trim();
   const puedeCerrar = efectivoContado && tarjetaCapturada && !faltaJustificar;
@@ -73,42 +179,45 @@ const CorteCaja = () => {
         ? 'Hay diferencias: explica el motivo en observaciones'
         : null;
 
-  const datosTicket = { resumen, conteo, terminal, observaciones, user };
-
   const handlePrecorte = () => {
-    descargarTicketCorte({ tipo: 'X', ...datosTicket });
+    descargarTicketCorte({ tipo: 'X', resumen, conteo, terminal, observaciones, user });
     setAviso('Pre-corte X guardado en PDF');
   };
 
+  // Devuelve false si no se pudo registrar (el diálogo se queda abierto)
   const handleMovimiento = async (movimiento) => {
-    await registrarMovimiento({ ...movimiento, usuarioId: user?.id });
-    setResumen(calcularResumen());
-    setAviso(movimiento.tipo === 'retiro' ? 'Retiro registrado' : 'Entrada registrada');
+    try {
+      setTurno(await registrarMovimiento(movimiento));
+      setAviso(movimiento.tipo === 'retiro' ? 'Retiro registrado' : 'Entrada registrada');
+      return true;
+    } catch (error) {
+      setAviso(mensajeDeError(error, 'No se pudo registrar el movimiento.'));
+      return false;
+    }
   };
 
   const handleCerrar = async () => {
     setCerrando(true);
     try {
-      const registro = await registrarCorte({
-        usuarioId: user?.id,
-        usuarioNombre: user?.nombre,
-        terminal: TERMINAL.numero,
-        desde: resumen.desde,
-        tickets: resumen.tickets,
-        bruto: resumen.bruto,
-        descuentos: resumen.descuentos,
-        neto: resumen.neto,
-        porMetodo: resumen.porMetodo.map(({ id, total, transacciones }) => ({ id, total, transacciones })),
-        efectivo: { fondo: resumen.fondo, entradas: resumen.entradas, retiros: resumen.retiros, esperado: resumen.efectivoEsperado, contado, diferencia: difEfectivo, conteo },
-        tarjeta: { sistema: resumen.tarjeta, terminal: terminal.monto, vouchers: terminal.vouchers, diferencia: difTarjeta },
-        observaciones: observaciones.trim(),
-      });
-      setConfirmar(false);
-      const ticket = { tipo: 'Z', folio: registro.id, fecha: new Date(registro.fecha), ...datosTicket };
+      const cerrado = corteDesdeApi(await cerrarCaja({ conteo, terminal, observaciones: observaciones.trim() }));
+      const ticket = {
+        tipo: 'Z',
+        folio: cerrado.id,
+        fecha: new Date(cerrado.fecha),
+        resumen: cerrado.resumen,
+        conteo: cerrado.efectivo.conteo,
+        terminal: { monto: cerrado.tarjeta.terminal, vouchers: cerrado.tarjeta.vouchers },
+        observaciones: cerrado.observaciones,
+        user: { nombre: cerrado.usuarioNombre },
+      };
       descargarTicketCorte(ticket);
-      setCorte({ ...registro, ticket });
-    } catch {
-      setAviso('No se pudo registrar el corte. Intenta de nuevo.');
+      setConfirmar(false);
+      setCorte({ ...cerrado, neto: cerrado.resumen.neto, ticket });
+    } catch (error) {
+      setConfirmar(false);
+      setAviso(mensajeDeError(error, 'No se pudo registrar el corte. Intenta de nuevo.'));
+      // Pudo cambiar algo (otra venta, otro cierre): se recarga el turno
+      obtenerTurno().then(setTurno).catch(() => {});
     } finally {
       setCerrando(false);
     }
@@ -176,7 +285,7 @@ const CorteCaja = () => {
                 fontSize: '0.95rem',
                 color: COLORS.ink,
                 backgroundColor: COLORS.inputBg,
-                '&:hover': { backgroundColor: '#e2e7ee' },
+                '&:hover': { backgroundColor: COLORS.hover },
               }}
             >
               Imprimir pre-corte X (lectura parcial)
@@ -198,7 +307,7 @@ const CorteCaja = () => {
                 backgroundColor: COLORS.red,
                 boxShadow: '0 6px 16px rgba(227, 36, 59, 0.3)',
                 '&:hover': { backgroundColor: COLORS.redHover },
-                '&.Mui-disabled': { backgroundColor: '#f3a3ad', color: '#fff', boxShadow: 'none' },
+                '&.Mui-disabled': { backgroundColor: '#f3a3ad', color: COLORS.surface, boxShadow: 'none' },
               }}
             >
               Cerrar turno e imprimir corte Z
@@ -266,7 +375,7 @@ const CorteCaja = () => {
       <Dialog open={Boolean(corte)} fullWidth maxWidth="xs" slotProps={{ paper: { sx: { borderRadius: 4 } } }}>
         {corte && (
           <Box sx={{ p: 3, textAlign: 'center' }}>
-            <CheckCircle sx={{ fontSize: 56, color: '#16a34a' }} />
+            <CheckCircle sx={{ fontSize: 56, color: COLORS.greenText }} />
             <Typography component="h2" sx={{ mt: 0.5, fontWeight: 800, fontSize: '1.4rem', color: COLORS.ink }}>
               Turno cerrado
             </Typography>

@@ -1,39 +1,19 @@
-import { TERMINAL, TURNO } from '../data/dummy';
+import axiosClient from '../api/axiosClient';
 
-// Simulación del API: guarda en localStorage. Cuando exista el backend,
-// reemplazar el cuerpo de cada función por la llamada con axiosClient.
-const STORAGE_KEY = 'checklistApertura';
-
-const esperar = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-// Identifica el checklist del día/turno/terminal actual (fecha local AAAA-MM-DD)
-const claveTurno = () => `${new Date().toLocaleDateString('en-CA')}-T${TURNO.numero}-${TERMINAL.numero}`;
-
-const leer = () => {
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY));
-  } catch {
-    return null;
-  }
+// GET /checklist/apertura — { fecha, items, registro } (registro es null si hoy no se ha hecho)
+export const obtenerChecklistApertura = async () => {
+  const { data } = await axiosClient.get('/checklist/apertura');
+  return data.data;
 };
 
-// Devuelve el registro (guardado u omitido) del turno actual, o null si no existe
-export const obtenerChecklistDelTurno = () => {
-  const registro = leer();
-  return registro?.clave === claveTurno() ? registro : null;
-};
-
-// TODO API: axiosClient.post('/checklist-apertura', payload)
+// POST /checklist/apertura — payload: { respuestas: [{ id_item, cumplido, valor?, temperaturas? }], comentarios }
 export const guardarChecklist = async (payload) => {
-  await esperar(700);
-  const registro = { ...payload, clave: claveTurno(), estado: 'completado', guardadoEn: new Date().toISOString() };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(registro));
-  return registro;
+  const { data } = await axiosClient.post('/checklist/apertura', payload);
+  return data.data;
 };
 
-// TODO API: registrar la omisión para que un supervisor la autorice
-export const omitirChecklist = async (usuarioId) => {
-  const registro = { clave: claveTurno(), estado: 'omitido', usuarioId, guardadoEn: new Date().toISOString() };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(registro));
-  return registro;
+// POST /checklist/apertura/omitir — queda pendiente de autorización de un supervisor
+export const omitirChecklist = async () => {
+  const { data } = await axiosClient.post('/checklist/apertura/omitir');
+  return data.data;
 };

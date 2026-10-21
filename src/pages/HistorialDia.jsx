@@ -1,9 +1,12 @@
-import { useMemo } from 'react';
-import { Box, Button, IconButton, Typography } from '@mui/material';
-import { ArrowBack } from '@mui/icons-material';
+import { useEffect, useMemo, useState } from 'react';
+import { Alert, Box, Button, CircularProgress, IconButton, Typography } from '@mui/material';
+import { ArrowBack, InfoOutlined } from '@mui/icons-material';
 import { useNavigate, useParams } from 'react-router-dom';
+import { mensajeDeError } from '../api/axiosClient';
+import IconTile from '../components/IconTile';
 import Panel from '../components/Panel';
-import { claveDia, construirResumen, obtenerHistorial } from '../services/corteService';
+import { construirResumen, corteDesdeApi, obtenerCortes } from '../services/corteService';
+import { obtenerVentasDelDia, ventaDesdeApi } from '../services/ventasService';
 import { COLORS } from '../theme';
 import { formatLongDate, formatMoney } from '../utils/format';
 import DesglosePagos from './corte/DesglosePagos';
@@ -24,24 +27,39 @@ const chipDiferencia = (titulo, diferencia) => {
   };
 };
 
-// Detalle de un día cerrado: mismas vistas del corte, en solo lectura
+const SIN_CORTES = [];
+
+// Detalle de un día: sus ventas y los cortes de caja de los turnos abiertos ese día
 const HistorialDia = () => {
   const { fecha } = useParams();
   const navigate = useNavigate();
-  // Del primer turno al último
-  const cortes = useMemo(() => obtenerHistorial().filter((c) => claveDia(c.fecha) === fecha).reverse(), [fecha]);
+  const [estado, setEstado] = useState({ fecha: null, ventas: null, cortes: SIN_CORTES, error: '' });
+
+  useEffect(() => {
+    let vigente = true;
+    Promise.all([obtenerVentasDelDia(fecha), obtenerCortes({ desde: fecha, hasta: fecha })])
+      // Del primer turno al último
+      .then(([ventas, cortes]) => vigente && setEstado({ fecha, ventas: ventas.map(ventaDesdeApi), cortes: cortes.map(corteDesdeApi).reverse(), error: '' }))
+      .catch((e) => vigente && setEstado({ fecha, ventas: null, cortes: SIN_CORTES, error: mensajeDeError(e, 'No se pudieron cargar las ventas del día.') }));
+    return () => {
+      vigente = false;
+    };
+  }, [fecha]);
+
+  const ventas = estado.fecha === fecha ? estado.ventas : null;
+  const cortes = estado.fecha === fecha ? estado.cortes : SIN_CORTES;
 
   const resumen = useMemo(
     () =>
-      cortes.length
+      ventas
         ? construirResumen({
-            ventas: cortes.flatMap((c) => c.resumen.ventas),
+            ventas,
             movimientos: cortes.flatMap((c) => c.resumen.movimientos),
-            fondo: cortes[0].efectivo.fondo,
-            desde: cortes[0].desde,
+            fondo: cortes[0]?.efectivo.fondo ?? 0,
+            desde: ventas[0]?.fecha ?? `${fecha}T00:00:00`,
           })
         : null,
-    [cortes]
+    [ventas, cortes, fecha]
   );
 
   const volver = (
@@ -50,10 +68,12 @@ const HistorialDia = () => {
     </IconButton>
   );
 
-  if (!resumen) {
+  if (estado.error && estado.fecha === fecha) {
     return (
       <Panel sx={{ py: 6, textAlign: 'center' }}>
-        <Typography sx={{ fontWeight: 700, color: COLORS.ink }}>No hay cortes registrados para este día</Typography>
+        <Alert severity="error" sx={{ maxWidth: 480, mx: 'auto', textAlign: 'left' }}>
+          {estado.error}
+        </Alert>
         <Button onClick={() => navigate('/historial')} startIcon={<ArrowBack />} sx={{ mt: 2, textTransform: 'none', fontWeight: 600 }}>
           Volver al historial
         </Button>
@@ -61,9 +81,32 @@ const HistorialDia = () => {
     );
   }
 
-  const cajeros = [...new Set(cortes.map((c) => c.usuarioNombre).filter(Boolean))];
-  const difEfectivo = cortes.reduce((suma, c) => suma + c.efectivo.diferencia, 0);
-  const difTarjeta = cortes.reduce((suma, c) => suma + c.tarjeta.diferencia, 0);
+  if (!resumen) {
+    return (
+      <Panel sx={{ py: 8, textAlign: 'center' }}>
+        <CircularProgress />
+      </Panel>
+    );
+  }
+
+  if (!ventas.length) {
+    return (
+      <Panel sx={{ py: 6, textAlign: 'center' }}>
+        <Typography sx={{ fontWeight: 700, color: COLORS.ink }}>No hay ventas registradas el {formatLongDate(new Date(`${fecha}T12:00:00`)).toLowerCase()}</Typography>
+        <Button onClick={() => navigate('/historial')} startIcon={<ArrowBack />} sx={{ mt: 2, textTransform: 'none', fontWeight: 600 }}>
+          Volver al historial
+        </Button>
+      </Panel>
+    );
+  }
+
+  const vendedores = [...new Set(ventas.map((v) => v.vendedor))];
+  const chips = cortes.length
+    ? [
+        chipDiferencia('Efectivo', cortes.reduce((suma, c) => suma + c.efectivo.diferencia, 0)),
+        chipDiferencia('Tarjeta', cortes.reduce((suma, c) => suma + c.tarjeta.diferencia, 0)),
+      ]
+    : [{ label: 'Sin corte de caja', bg: COLORS.inputBg, color: COLORS.muted }];
 
   return (
     <Box sx={{ display: 'grid', gap: GAP }}>
@@ -72,9 +115,9 @@ const HistorialDia = () => {
         inicio={volver}
         etiqueta="HISTORIAL · DETALLE DEL DÍA"
         titulo={formatLongDate(new Date(`${fecha}T12:00:00`))}
-        subtitulo={`${cortes.length} corte${cortes.length === 1 ? '' : 's'} · ${cajeros.join(', ') || 'Cajero no registrado'}`}
+        subtitulo={`${ventas.length} venta${ventas.length === 1 ? '' : 's'} · Vendió: ${vendedores.join(', ')}`}
         etiquetaNeto="VENTAS NETAS DEL DÍA"
-        chips={[chipDiferencia('Efectivo', difEfectivo), chipDiferencia('Tarjeta', difTarjeta)]}
+        chips={chips}
       />
 
       <Box
@@ -92,9 +135,22 @@ const HistorialDia = () => {
         </Box>
 
         <Box component="aside" sx={{ display: 'grid', gap: GAP, minWidth: 0 }}>
-          {cortes.map((corte) => (
-            <CorteCuadre key={corte.id} corte={corte} />
-          ))}
+          {cortes.length ? (
+            cortes.map((corte) => <CorteCuadre key={corte.id} corte={corte} />)
+          ) : (
+            <Panel sx={{ display: 'flex', gap: 1.5, p: { xs: 2, md: 2.5 } }}>
+              <IconTile bg={COLORS.inputBg} color={COLORS.muted} size={40}>
+                <InfoOutlined />
+              </IconTile>
+              <Box>
+                <Typography sx={{ fontWeight: 700, color: COLORS.ink }}>Sin corte de caja</Typography>
+                <Typography sx={{ mt: 0.5, fontSize: '0.85rem', color: COLORS.label }}>
+                  Ningún turno de caja abierto este día se ha cerrado todavía. El conteo de billetes y los cuadres de efectivo y tarjeta
+                  aparecen aquí cuando se hace el corte en Corte de Caja.
+                </Typography>
+              </Box>
+            </Panel>
+          )}
         </Box>
       </Box>
     </Box>

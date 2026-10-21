@@ -7,7 +7,7 @@ import { COLORS } from '../../theme';
 import { formatMoney } from '../../utils/format';
 import { estadoDiferencia, subtituloSx, tituloSeccionSx, totalContado } from './estilos';
 
-// Color aproximado de cada billete mexicano para ubicarlo rápido
+// Color aproximado de cada billete mexicano para ubicarlo rápido (igual en modo día y noche)
 const COLOR_BILLETE = {
   1000: { bg: '#ede9fe', color: '#5b21b6' },
   500: { bg: '#dbeafe', color: '#1e40af' },
@@ -136,7 +136,7 @@ const ConteoEfectivo = ({ conteo, onConteo, esperado }) => {
       ))}
 
       {/* Cuadre de efectivo */}
-      <Box sx={{ mt: 2, p: 2, borderRadius: 3, backgroundColor: '#f8fafc', border: `1px solid ${COLORS.border}` }}>
+      <Box sx={{ mt: 2, p: 2, borderRadius: 3, backgroundColor: COLORS.surfaceAlt, border: `1px solid ${COLORS.border}` }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', color: COLORS.label }}>
           <span>Efectivo esperado (sistema)</span>
           <Typography component="span" sx={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>

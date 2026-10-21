@@ -49,7 +49,7 @@ const ICONOS_PAGO = { efectivo: <PaymentsOutlined />, tarjeta: <CreditCard />, s
 const PANTALLA_BAJA = '@media (max-height: 820px)';
 
 const OrdenLinea = ({ linea, onCantidad, onQuitar, onModificar }) => (
-  <Box sx={{ p: 1.5, borderRadius: 3, backgroundColor: '#f8fafc', border: `1px solid ${COLORS.border}` }}>
+  <Box sx={{ p: 1.5, borderRadius: 3, backgroundColor: COLORS.surfaceAlt, border: `1px solid ${COLORS.border}` }}>
     <Box sx={{ display: 'flex', gap: 1.25, alignItems: 'flex-start' }}>
       <Box
         sx={{
@@ -116,6 +116,8 @@ const OrdenPanel = ({
   orden,
   metodo,
   onMetodo,
+  tipoTarjeta,
+  onTipoTarjeta,
   recibido,
   onRecibido,
   cobrando,
@@ -141,7 +143,7 @@ const OrdenPanel = ({
   };
 
   return (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#fff' }}>
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: COLORS.surface }}>
       {/* ENCABEZADO DE LA ORDEN */}
       <Box sx={{ px: 2, pt: 2, pb: 1.5, borderBottom: `1px solid ${COLORS.border}` }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -214,7 +216,7 @@ const OrdenPanel = ({
                 fontWeight: 600,
                 color: COLORS.label,
               },
-              '& .Mui-selected': { backgroundColor: `${COLORS.blueText} !important`, color: '#fff !important' },
+              '& .Mui-selected': { backgroundColor: `${COLORS.blueText} !important`, color: `${COLORS.surface} !important` },
             }}
           >
             <ToggleButton value="aqui">Aquí</ToggleButton>
@@ -255,7 +257,7 @@ const OrdenPanel = ({
             }}
           >
             <Box sx={{ width: 36, height: 36, borderRadius: '50%', display: 'grid', placeItems: 'center', backgroundColor: COLORS.yellow, flexShrink: 0 }}>
-              <ConfirmationNumberOutlined fontSize="small" sx={{ color: '#5c4a00' }} />
+              <ConfirmationNumberOutlined fontSize="small" sx={{ color: COLORS.onYellow }} />
             </Box>
             <Box sx={{ flex: 1, minWidth: 0 }}>
               <Typography sx={{ fontWeight: 700, fontSize: '0.92rem', color: COLORS.ink }}>{pedido.descuento.nombre}</Typography>
@@ -334,6 +336,29 @@ const OrdenPanel = ({
           })}
         </Box>
 
+        {metodo === 'tarjeta' && !vacia && (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1.25 }}>
+            <Typography sx={{ fontSize: '0.8rem', color: COLORS.label }}>Tipo de tarjeta:</Typography>
+            <ToggleButtonGroup
+              exclusive
+              value={tipoTarjeta}
+              onChange={(_, valor) => valor && onTipoTarjeta(valor)}
+              aria-label="Tipo de tarjeta"
+              sx={{
+                flex: 1,
+                p: 0.5,
+                borderRadius: 2,
+                backgroundColor: COLORS.inputBg,
+                '& .MuiToggleButton-root': { flex: 1, minHeight: 36, border: 'none', borderRadius: '8px !important', textTransform: 'none', fontWeight: 700, color: COLORS.label },
+                '& .Mui-selected': { backgroundColor: `${COLORS.blueText} !important`, color: `${COLORS.surface} !important` },
+              }}
+            >
+              <ToggleButton value="debito">Débito</ToggleButton>
+              <ToggleButton value="credito">Crédito</ToggleButton>
+            </ToggleButtonGroup>
+          </Box>
+        )}
+
         {metodo === 'efectivo' && !vacia && (
           <>
             <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 0.75, mt: 1.25 }}>
@@ -349,7 +374,7 @@ const OrdenPanel = ({
                     borderRadius: 2,
                     backgroundColor: recibido === monto ? COLORS.blueText : COLORS.inputBg,
                     color: recibido === monto ? '#fff' : COLORS.label,
-                    '&:hover': { backgroundColor: recibido === monto ? COLORS.blueText : '#e2e7ee' },
+                    '&:hover': { backgroundColor: recibido === monto ? COLORS.blueText : COLORS.hover },
                   }}
                 />
               ))}
@@ -365,11 +390,11 @@ const OrdenPanel = ({
                 px: 1.5,
                 minHeight: 40,
                 borderRadius: 2,
-                backgroundColor: cambio > 0 ? '#ecfdf3' : COLORS.inputBg,
+                backgroundColor: cambio > 0 ? COLORS.greenSoft : COLORS.inputBg,
               }}
             >
               <Typography sx={{ fontSize: '0.85rem', fontWeight: 600, color: COLORS.label }}>Cambio</Typography>
-              <Typography sx={{ fontWeight: 800, fontSize: '1.1rem', color: cambio > 0 ? '#15803d' : COLORS.muted }}>
+              <Typography sx={{ fontWeight: 800, fontSize: '1.1rem', color: cambio > 0 ? COLORS.greenText : COLORS.muted }}>
                 {formatMoney(cambio)}
               </Typography>
             </Box>
@@ -403,7 +428,7 @@ const OrdenPanel = ({
           px: 2,
           pt: 1.25,
           pb: { xs: 'max(16px, env(safe-area-inset-bottom))', md: 2 },
-          backgroundColor: '#fff',
+          backgroundColor: COLORS.surface,
           boxShadow: '0 -8px 20px rgba(15, 23, 42, 0.08)',
         }}
       >
@@ -424,7 +449,7 @@ const OrdenPanel = ({
             backgroundColor: COLORS.red,
             boxShadow: '0 6px 16px rgba(227, 36, 59, 0.3)',
             '&:hover': { backgroundColor: COLORS.redHover },
-            '&.Mui-disabled': { backgroundColor: '#f3a3ad', color: '#fff' },
+            '&.Mui-disabled': { backgroundColor: '#f3a3ad', color: COLORS.surface },
           }}
         >
           <Box component="span" sx={{ flex: 1, textAlign: 'left' }}>

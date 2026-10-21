@@ -1,12 +1,14 @@
-import { useState } from 'react';
-import { Box, Button, Chip, InputBase, Snackbar, TextField, Typography } from '@mui/material';
-import { ArrowForward, Icecream, InboxOutlined, PaymentsOutlined, PointOfSale } from '@mui/icons-material';
+import { useEffect, useState } from 'react';
+import { Box, Button, Chip, CircularProgress, InputBase, Snackbar, TextField, Typography } from '@mui/material';
+import { ArrowForward, Icecream, InboxOutlined, LockOpenOutlined, PaymentsOutlined, PointOfSale } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
+import { mensajeDeError } from '../../api/axiosClient';
 import IconTile from '../../components/IconTile';
 import Panel from '../../components/Panel';
 import { FONDO_SUGERIDO } from '../../data/dummy';
 import { COLORS } from '../../theme';
-import { formatNumber } from '../../utils/format';
+import { abrirCaja, obtenerTurno } from '../../services/corteService';
+import { formatMoney, formatNumber } from '../../utils/format';
 
 const AJUSTES = [100, 200, 500];
 
@@ -17,9 +19,9 @@ const softButtonSx = {
   textTransform: 'none',
   fontWeight: 600,
   fontSize: '0.95rem',
-  backgroundColor: '#fff',
+  backgroundColor: COLORS.surface,
   boxShadow: '0 1px 2px rgba(15, 23, 42, 0.06)',
-  '&:hover': { backgroundColor: '#f8fafc' },
+  '&:hover': { backgroundColor: COLORS.surfaceAlt },
 };
 
 const AperturaCaja = () => {
@@ -29,6 +31,8 @@ const AperturaCaja = () => {
   const [montoTexto, setMontoTexto] = useState(null);
   const [comentario, setComentario] = useState('');
   const [aviso, setAviso] = useState('');
+  const [turno, setTurno] = useState(undefined); // undefined = consultando
+  const [abriendo, setAbriendo] = useState(false);
 
   const handleMontoChange = (e) => {
     const limpio = e.target.value.replace(/[^\d.]/g, '').replace(/(\..*)\./g, '$1');
@@ -40,14 +44,67 @@ const AperturaCaja = () => {
     setMontoTexto(null);
   };
 
-  const handleAbrirCaja = () => {
-    // Simulación: cuando exista el API se enviará la apertura al backend
-    localStorage.setItem(
-      'aperturaCaja',
-      JSON.stringify({ monto, comentario: comentario.trim(), fecha: new Date().toISOString() })
-    );
-    navigate('/pos');
+  // Turno abierto (si la caja ya se abrió no se vuelve a pedir el fondo)
+  useEffect(() => {
+    let vigente = true;
+    obtenerTurno()
+      .then((t) => vigente && setTurno(t))
+      .catch(() => vigente && setTurno(null));
+    return () => {
+      vigente = false;
+    };
+  }, []);
+
+  const handleAbrirCaja = async () => {
+    setAbriendo(true);
+    try {
+      await abrirCaja({ fondo: monto, comentario: comentario.trim() });
+      navigate('/pos');
+    } catch (error) {
+      setAviso(mensajeDeError(error, 'No se pudo abrir la caja.'));
+      // 409: otra terminal o pestaña ya la abrió
+      if (error.response?.status === 409) obtenerTurno().then(setTurno).catch(() => {});
+    } finally {
+      setAbriendo(false);
+    }
   };
+
+  if (turno === undefined) {
+    return (
+      <Panel sx={{ py: 6, textAlign: 'center' }}>
+        <CircularProgress size={32} />
+      </Panel>
+    );
+  }
+
+  if (turno) {
+    return (
+      <Panel sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, alignItems: { sm: 'center' }, gap: 2, p: { xs: 2, md: 3 } }}>
+        <IconTile bg="#dcfce7" color="#15803d" size={52}>
+          <LockOpenOutlined />
+        </IconTile>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography component="h2" sx={{ fontWeight: 700, fontSize: { xs: '1.1rem', md: '1.3rem' }, color: COLORS.ink }}>
+            Caja abierta
+          </Typography>
+          <Typography sx={{ fontSize: '0.88rem', color: COLORS.label }}>
+            Desde las {new Date(turno.apertura.fecha).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: false })} hrs por{' '}
+            {turno.apertura.usuario} · Fondo inicial {formatMoney(turno.apertura.fondo)} · {turno.ventas.tickets} venta
+            {turno.ventas.tickets === 1 ? '' : 's'} por {formatMoney(turno.ventas.ventas_netas)}
+          </Typography>
+        </Box>
+        <Button
+          variant="contained"
+          disableElevation
+          endIcon={<ArrowForward />}
+          onClick={() => navigate('/pos')}
+          sx={{ minHeight: 52, px: 3, borderRadius: 3, textTransform: 'none', fontWeight: 800, backgroundColor: COLORS.red, '&:hover': { backgroundColor: COLORS.redHover } }}
+        >
+          Ir a ventas
+        </Button>
+      </Panel>
+    );
+  }
 
   return (
     <Panel
@@ -75,7 +132,7 @@ const AperturaCaja = () => {
             display: { xs: 'none', sm: 'inline-flex' },
             borderRadius: 1.5,
             backgroundColor: COLORS.yellowSoft,
-            color: '#5c4a00',
+            color: COLORS.yellowText,
             fontWeight: 600,
           }}
         />
@@ -100,7 +157,7 @@ const AperturaCaja = () => {
             px: { xs: 2, md: 2.5 },
             py: { xs: 1, md: 1.5 },
             borderRadius: 2.5,
-            backgroundColor: '#fff',
+            backgroundColor: COLORS.surface,
             boxShadow: '0 1px 3px rgba(15, 23, 42, 0.06)',
             '&:focus-within': { boxShadow: `0 0 0 2px ${COLORS.blue}` },
           }}
@@ -146,7 +203,7 @@ const AperturaCaja = () => {
               color: COLORS.label,
               backgroundColor: 'transparent',
               boxShadow: 'none',
-              '&:hover': { backgroundColor: '#e2e7ee' },
+              '&:hover': { backgroundColor: COLORS.hover },
             }}
           >
             Reiniciar
@@ -182,6 +239,7 @@ const AperturaCaja = () => {
           variant="contained"
           disableElevation
           onClick={handleAbrirCaja}
+          disabled={abriendo}
           startIcon={<PointOfSale />}
           endIcon={
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -203,7 +261,7 @@ const AperturaCaja = () => {
             '&:hover': { backgroundColor: COLORS.redHover },
           }}
         >
-          Abrir caja e ir a ventas
+          {abriendo ? 'Abriendo caja…' : 'Abrir caja e ir a ventas'}
         </Button>
         <Button
           onClick={() => setAviso('Señal de apertura enviada a la gaveta (simulación)')}
@@ -218,7 +276,7 @@ const AperturaCaja = () => {
             fontSize: '0.95rem',
             color: COLORS.ink,
             backgroundColor: COLORS.inputBg,
-            '&:hover': { backgroundColor: '#e2e7ee' },
+            '&:hover': { backgroundColor: COLORS.hover },
           }}
         >
           Test Gaveta

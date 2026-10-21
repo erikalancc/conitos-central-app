@@ -23,7 +23,7 @@ const MontoInput = ({ id, value, onChange, autoFocus, sx }) => {
           px: 2,
           minHeight: 52,
           borderRadius: 2.5,
-          backgroundColor: '#fff',
+          backgroundColor: COLORS.surface,
           border: `1px solid ${COLORS.border}`,
           '&:focus-within': { borderColor: COLORS.blue, boxShadow: `0 0 0 1px ${COLORS.blue}` },
         },

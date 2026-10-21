@@ -59,7 +59,7 @@ const DesglosePagos = ({ resumen }) => {
                 borderRadius: 3,
                 border: `1px solid ${COLORS.border}`,
                 borderTop: `4px solid ${color.barra}`,
-                backgroundColor: '#fbfcfd',
+                backgroundColor: COLORS.surfaceAlt,
               }}
             >
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
