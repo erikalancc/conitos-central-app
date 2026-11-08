@@ -7,6 +7,52 @@ Cada entrada indica **qué** cambió, **dónde** y **por qué**, y si afecta al 
 
 ## 2026-11-08
 
+### Checklist operativo configurable desde Administración (front + API + base de datos)
+
+**Qué cambia**
+- Nueva sección **Administración → Checklist operativo**. Los puntos se agrupan por momento del día:
+  - **Apertura:** al iniciar el día, igual que antes.
+  - **Mitad del turno:** a partir de la mitad del horario de la sucursal (p. ej. 10:00 a 21:00 → desde las 15:30; sin horario se usa 10:00 a 21:00).
+  - **Antes del corte:** al presionar *Iniciar corte de caja*.
+- Cada punto se configura con:
+  - *¿Qué se revisa?* e instrucciones.
+  - **Momento**.
+  - **Tipo de respuesta:** *Marcar como hecho*, *Elegir una opción* (cada opción es *Conforme*, *Con observación* o *Incidencia*; las dos últimas piden describir la incidencia) o *Marcar y escribir una nota*.
+  - Texto cuando se cumple.
+  - **Sucursales donde aplica** (*Todas* o una o varias).
+  - **Obligatorio** y **Activo**.
+- Se pueden agregar, editar, activar/desactivar y borrar puntos. Un punto que ya tiene checklists registrados no se borra: se desactiva.
+- **Fijo:** *Control de Refrigeración y Congeladores* siempre está en la apertura, con los equipos de frío de cada sucursal. No se edita, desactiva ni borra.
+- **Vendedor / Cajero:**
+  - **Apertura** y **mitad del turno** se le piden en cualquier pantalla, sin poder cerrarlos hasta guardarlos. Se revisa al cambiar de pantalla y cada 5 minutos.
+  - **Antes del corte** se le pide al iniciar el corte de caja. Con ✕ cancela el inicio del corte; al guardarlo pasa al conteo.
+  - Solo se piden los momentos que tienen puntos para su sucursal.
+  - El API tampoco deja cerrar el turno sin el checklist de antes del corte.
+- Cada checklist se registra **por día, sucursal y momento**.
+- Se quitó la opción *Omitir* de la pantalla (ya solo la usaba el vendedor, a quien no se le permite).
+
+**Base de datos** (migración `2026-11-08-120000_ChecklistConfigurable`, ya aplicada): `checklist_items.momento` y `es_fijo`, tabla `checklist_items_sucursales`, `checklist_registros.momento` con llave única `(fecha, id_sucursal, momento)`. Los 5 puntos existentes quedaron en *Apertura* para todas las sucursales.
+
+**API:**
+- `GET/POST /checklist/{apertura|medio-turno|cierre}` (`Checklist.php`).
+- `GET/POST/PUT/DELETE /admin/checklist` (nuevo `ChecklistAdmin.php`).
+- `ChecklistItemModel` filtra por momento y sucursal. `ChecklistRegistroModel` es por momento y tiene `faltaCompletar()`. `SucursalModel::medioTurno()`.
+- `Caja.php` bloquea el cierre al vendedor sin checklist de cierre.
+- Documentado en `docs/endpoints/checklist.md`, `BASE_DE_DATOS.md` y `esquema.sql`.
+
+**Front:**
+- `src/pages/ChecklistOperativo.jsx` (nueva página, ruta `/admin/checklist`) y `SeccionesAdmin.jsx`.
+- `checklistService.js`: por momento, más los servicios de administración.
+- `ChecklistApertura.jsx`: títulos y textos por momento.
+- `ChecklistObligatorio.jsx`: apertura y mitad del turno, con revisión periódica.
+- `CorteCaja.jsx`: checklist antes del corte.
+
+**Pruebas realizadas** (tokens temporales):
+- Se creó un punto de *mitad del turno* para todas y uno de *antes del corte* solo para Hgo. El vendedor de Qro vio el primero (desde 15:30) y no el de Hgo.
+- Se rechazaron un SELECT con una sola opción, borrar el punto fijo y borrar un punto con respuestas. El vendedor recibe 403 en la administración.
+- Después se borraron los puntos de prueba.
+- **Se borró el registro del checklist de hoy** (2026-11-08, apertura de Qro, hecho por Sharon Michel) para poder probar desde cero.
+
 ### Corte de caja: confirmación del conteo (`src/pages/CorteCaja.jsx`)
 
 - Al dar **Siguiente** en el paso *Conteo* se abre el modal **Confirma tu conteo** con:

@@ -15,7 +15,7 @@ import { AcUnit, ArrowForward, BadgeOutlined, Close, DeviceThermostat, FactCheck
 import { mensajeDeError } from '../../api/axiosClient';
 import { TURNO } from '../../data/dummy';
 import CampoTemperatura from '../../components/CampoTemperatura';
-import { guardarChecklist, omitirChecklist } from '../../services/checklistService';
+import { guardarChecklist } from '../../services/checklistService';
 import { COLORS } from '../../theme';
 
 // items vienen de GET /checklist/apertura. Según tipo_campo, además del check se captura:
@@ -125,11 +125,20 @@ const TemperaturaInput = ({ id, label, icon, value, onChange, rango, error }) =>
   );
 };
 
+// Textos por momento del día
+const MOMENTOS = {
+  apertura: { titulo: 'Checklist Operativo de Apertura', subtitulo: 'Control diario de calidad y preparación', aviso: 'Es obligatorio al iniciar el día: guárdalo para continuar.', boton: 'Guardar y continuar' },
+  'medio-turno': { titulo: 'Checklist de Mitad del Turno', subtitulo: 'Revisión a la mitad de la jornada', aviso: 'Es obligatorio a mitad del turno: guárdalo para continuar.', boton: 'Guardar y continuar' },
+  cierre: { titulo: 'Checklist Antes del Corte', subtitulo: 'Revisión antes de hacer el corte de caja', aviso: 'Complétalo para poder hacer el corte de caja.', boton: 'Guardar y continuar al corte' },
+};
+
 /**
- * obligatorio (Vendedor / Cajero): sin botón de cerrar ni "Omitir"; solo se cierra al guardarlo.
+ * Checklist operativo de un momento del día (apertura, medio-turno o cierre).
+ * obligatorio: sin botón de cerrar; solo se cierra al guardarlo.
  * sucursal: { id, nombre } de la que salen los congeladores y refrigeradores.
  */
-const ChecklistApertura = ({ open, items, user, sucursal, obligatorio = false, onClose, onSaved }) => {
+const ChecklistApertura = ({ open, momento = 'apertura', items, user, sucursal, obligatorio = false, onClose, onSaved }) => {
+  const textos = MOMENTOS[momento];
   const fullScreen = useMediaQuery((theme) => theme.breakpoints.down('sm'));
   const [form, setForm] = useState(() => estadoInicial(items));
   const [intentado, setIntentado] = useState(false);
@@ -160,23 +169,10 @@ const ChecklistApertura = ({ open, items, user, sucursal, obligatorio = false, o
 
     setGuardando(true);
     try {
-      const registro = await guardarChecklist(armarPayload(form, items));
+      const registro = await guardarChecklist(momento, armarPayload(form, items));
       onSaved(registro);
     } catch (err) {
       setErrorGuardado(mensajeDeError(err, 'No se pudo guardar el checklist. Intenta de nuevo.'));
-    } finally {
-      setGuardando(false);
-    }
-  };
-
-  const handleOmitir = async () => {
-    setErrorGuardado('');
-    setGuardando(true);
-    try {
-      await omitirChecklist();
-      onClose();
-    } catch (err) {
-      setErrorGuardado(mensajeDeError(err, 'No se pudo omitir el checklist. Intenta de nuevo.'));
     } finally {
       setGuardando(false);
     }
@@ -231,7 +227,7 @@ const ChecklistApertura = ({ open, items, user, sucursal, obligatorio = false, o
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', columnGap: 1.5, rowGap: 0.5 }}>
             <Typography id="checklist-titulo" component="h2" sx={{ fontWeight: 800, fontSize: { xs: '1.2rem', sm: '1.5rem' } }}>
-              Checklist Operativo de Apertura
+              {textos.titulo}
             </Typography>
             <Chip
               size="small"
@@ -240,7 +236,7 @@ const ChecklistApertura = ({ open, items, user, sucursal, obligatorio = false, o
             />
           </Box>
           <Typography sx={{ mt: 0.25, fontSize: { xs: '0.8rem', sm: '0.9rem' }, opacity: 0.92 }}>
-            Control diario de calidad y preparación • Turno {TURNO.nombre}
+            {textos.subtitulo} • Turno {TURNO.nombre}
           </Typography>
         </Box>
         {!obligatorio && (
@@ -443,19 +439,9 @@ const ChecklistApertura = ({ open, items, user, sucursal, obligatorio = false, o
           </Alert>
         )}
         <Box sx={{ display: 'flex', flexDirection: { xs: 'column-reverse', sm: 'row' }, alignItems: 'center', gap: 1.5 }}>
-          {obligatorio ? (
-            <Typography sx={{ mr: { sm: 'auto' }, fontSize: '0.8rem', color: COLORS.muted, textAlign: { xs: 'center', sm: 'left' } }}>
-              Es obligatorio al iniciar el día: guárdalo para continuar.
-            </Typography>
-          ) : (
-            <Button
-              onClick={handleOmitir}
-              disabled={guardando}
-              sx={{ minHeight: 48, mr: { sm: 'auto' }, textTransform: 'none', fontWeight: 500, color: COLORS.label }}
-            >
-              Omitir por ahora (Requerirá autorización)
-            </Button>
-          )}
+          <Typography sx={{ mr: { sm: 'auto' }, fontSize: '0.8rem', color: COLORS.muted, textAlign: { xs: 'center', sm: 'left' } }}>
+            {textos.aviso}
+          </Typography>
           <Button
             type="submit"
             variant="contained"
@@ -476,7 +462,7 @@ const ChecklistApertura = ({ open, items, user, sucursal, obligatorio = false, o
               '&.Mui-disabled': { backgroundColor: COLORS.red, color: COLORS.surface, opacity: 0.7 },
             }}
           >
-            {guardando ? 'Guardando…' : 'Guardar y Continuar a Caja'}
+            {guardando ? 'Guardando…' : textos.boton}
           </Button>
         </Box>
       </Box>

@@ -1,5 +1,5 @@
 import { Box, Button } from '@mui/material';
-import { GroupOutlined, StorefrontOutlined, StoreMallDirectoryOutlined } from '@mui/icons-material';
+import { FactCheckOutlined, GroupOutlined, StorefrontOutlined, StoreMallDirectoryOutlined } from '@mui/icons-material';
 import { NavLink } from 'react-router-dom';
 import { COLORS } from '../../theme';
 
@@ -7,6 +7,7 @@ const SECCIONES = [
   { to: '/admin', label: 'Catálogo y precios', icono: <StorefrontOutlined /> },
   { to: '/admin/sucursales', label: 'Sucursales', icono: <StoreMallDirectoryOutlined /> },
   { to: '/admin/usuarios', label: 'Usuarios', icono: <GroupOutlined /> },
+  { to: '/admin/checklist', label: 'Checklist operativo', icono: <FactCheckOutlined /> },
 ];
 
 // Cambia entre las secciones de Administración

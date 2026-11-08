@@ -12,6 +12,8 @@ import { FONDO_SUGERIDO } from '../data/dummy';
 import { abrirCaja, cerrarCaja, corteDesdeApi, obtenerCaja, obtenerTurno, registrarMovimiento, resumenDesdeTurno } from '../services/corteService';
 import { COLORS } from '../theme';
 import { formatMoney } from '../utils/format';
+import { checklistPendiente, obtenerChecklist } from '../services/checklistService';
+import ChecklistApertura from './inicio/ChecklistApertura';
 import ConteoEfectivo from './corte/ConteoEfectivo';
 import DesglosePagos from './corte/DesglosePagos';
 import { COLOR_METODO, estadoDiferencia, totalContado } from './corte/estilos';
@@ -163,6 +165,19 @@ const CorteCaja = () => {
   const [cerrando, setCerrando] = useState(false);
   const [corte, setCorte] = useState(null);
   const [aviso, setAviso] = useState('');
+  const [checklistCierre, setChecklistCierre] = useState(null); // checklist "antes del corte" pendiente
+
+  // Vendedor: antes de iniciar el corte debe completar el checklist de cierre (si su sucursal tiene puntos)
+  const iniciarCorte = async () => {
+    if (!esVendedor) return setPaso(1);
+    try {
+      const checklist = await obtenerChecklist('cierre');
+      if (checklistPendiente(checklist)) setChecklistCierre(checklist);
+      else setPaso(1);
+    } catch (e) {
+      setAviso(mensajeDeError(e, 'No se pudo consultar el checklist de antes del corte.'));
+    }
+  };
 
   useEffect(() => {
     let vigente = true;
@@ -291,7 +306,7 @@ const CorteCaja = () => {
                   <strong>Resultado:</strong> el sistema compara lo que contaste con lo vendido y te dice si te faltó, te sobró o cuadra.
                 </li>
               </Box>
-              <Button variant="contained" disableElevation endIcon={<ArrowForward />} onClick={() => setPaso(1)} sx={botonPrincipalSx}>
+              <Button variant="contained" disableElevation endIcon={<ArrowForward />} onClick={iniciarCorte} sx={botonPrincipalSx}>
                 Iniciar corte de caja
               </Button>
               {!esVendedor && (
@@ -444,6 +459,22 @@ const CorteCaja = () => {
             </Button>
           </Panel>
         </>
+      )}
+
+      {/* CHECKLIST ANTES DEL CORTE (vendedor): al guardarlo pasa al conteo; con ✕ se cancela el inicio del corte */}
+      {checklistCierre && (
+        <ChecklistApertura
+          open
+          momento="cierre"
+          items={checklistCierre.items}
+          sucursal={checklistCierre.sucursal}
+          user={user}
+          onClose={() => setChecklistCierre(null)}
+          onSaved={() => {
+            setChecklistCierre(null);
+            setPaso(1);
+          }}
+        />
       )}
 
       {/* CONFIRMACIÓN DEL CONTEO: al confirmar ya no se puede regresar a modificarlo */}

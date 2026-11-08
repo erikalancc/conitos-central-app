@@ -9,6 +9,7 @@ import Sucursales from './pages/Sucursales';
 import Usuarios from './pages/Usuarios';
 import CorteCaja from './pages/CorteCaja';
 import EnConstruccion from './pages/EnConstruccion';
+import ChecklistOperativo from './pages/ChecklistOperativo';
 import Historial from './pages/Historial';
 import HistorialDia from './pages/HistorialDia';
 import Inicio from './pages/Inicio';
@@ -60,6 +61,7 @@ function App() {
                   <Route path="/admin" element={<Administracion />} />
                   <Route path="/admin/sucursales" element={<Sucursales />} />
                   <Route path="/admin/usuarios" element={<Usuarios />} />
+                  <Route path="/admin/checklist" element={<ChecklistOperativo />} />
                 </Route>
                 {PENDIENTES.map(({ path, titulo, modulo }) => (
                   <Route key={path} element={<ProtectedRoute roles={MODULOS[modulo]} />}>
