@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { Box, Button, ButtonBase, Checkbox, FormControlLabel, IconButton, MenuItem, Switch, Tooltip, Typography } from '@mui/material';
 import { Add, DeleteOutlined } from '@mui/icons-material';
+import CampoTemperatura from '../../components/CampoTemperatura';
 import { COLORS } from '../../theme';
 import { CampoTexto, Etiqueta, ErroresGenerales, Formulario, Interruptor, PieFormulario } from './campos';
+import { campoSx } from './formato';
 import { TIPOS_TERMINAL } from './recursos';
 
 
@@ -17,6 +19,24 @@ let siguienteClave = 1;
 const filaTerminal = (t = {}) => ({ clave: siguienteClave++, id: t.id, nombre: t.nombre ?? '', tipo: t.tipo ?? 'caja', activo: t.activo ?? true });
 const cajas = (n) => Array.from({ length: n }, (_, i) => filaTerminal({ nombre: `Caja #${String(i + 1).padStart(2, '0')}` }));
 
+// Congeladores y refrigeradores: rango permitido en °C (admite negativos)
+const TIPOS_EQUIPO = [
+  { id: 'congelador', label: 'Congelador', min: -30, max: -15 },
+  { id: 'refrigerador', label: 'Refrigerador', min: 0, max: 5 },
+];
+const texto = (n) => (n === undefined || n === null ? '' : String(n));
+const filaEquipo = (e = {}) => ({
+  clave: siguienteClave++,
+  id: e.id,
+  nombre: e.nombre ?? '',
+  tipo: e.tipo ?? 'congelador',
+  min: texto(e.temp_min),
+  max: texto(e.temp_max),
+  activo: e.activo ?? true,
+});
+// Una sucursal nueva arranca con un congelador y un refrigerador con su rango típico
+const equiposIniciales = () => TIPOS_EQUIPO.map((t) => filaEquipo({ nombre: t.label, tipo: t.id, temp_min: t.min, temp_max: t.max }));
+
 const SucursalForm = ({ registro, datos, errores, guardando, onGuardar, onCancelar }) => {
   const [nombre, setNombre] = useState(registro?.nombre ?? '');
   const [codigo, setCodigo] = useState(registro?.codigo ?? datos.siguiente_codigo);
@@ -30,7 +50,17 @@ const SucursalForm = ({ registro, datos, errores, guardando, onGuardar, onCancel
     registro?.modalidades ?? { mostrador: true, para_llevar: true, apps_delivery: false, drive_thru: false }
   );
   const [activo, setActivo] = useState(registro?.activo ?? true);
+  // Cuántas de las últimas ventas ve el Vendedor / Cajero en el historial del día y en el corte
+  const [ventasVisibles, setVentasVisibles] = useState(String(registro?.ventas_visibles_vendedor ?? 5));
   const [terminales, setTerminales] = useState(() => (registro ? registro.terminales.map(filaTerminal) : cajas(1)));
+
+  const [equipos, setEquipos] = useState(() => (registro ? (registro.equipos_frio ?? []).map(filaEquipo) : equiposIniciales()));
+  const cambiarEquipo = (clave, cambios) => setEquipos((lista) => lista.map((e) => (e.clave === clave ? { ...e, ...cambios } : e)));
+  // Al cambiar el tipo de un equipo sin rango capturado, se sugiere el rango típico
+  const cambiarTipoEquipo = (e, tipo) => {
+    const sugerido = TIPOS_EQUIPO.find((t) => t.id === tipo);
+    cambiarEquipo(e.clave, { tipo, ...(e.min === '' && e.max === '' ? { min: texto(sugerido.min), max: texto(sugerido.max) } : {}) });
+  };
 
   const cambiar = (clave, cambios) => setTerminales((lista) => lista.map((t) => (t.clave === clave ? { ...t, ...cambios } : t)));
   const soloCajasNuevas = !registro && terminales.every((t) => t.tipo === 'caja' && /^Caja #\d+$/.test(t.nombre));
@@ -46,8 +76,17 @@ const SucursalForm = ({ registro, datos, errores, guardando, onGuardar, onCancel
       hora_apertura: apertura || null,
       hora_cierre: cierre || null,
       modalidades,
+      ventas_visibles_vendedor: ventasVisibles === '' ? 0 : Number(ventasVisibles),
       ...(registro?.es_matriz ? {} : { activo }),
       terminales: terminales.map((t) => ({ ...(t.id ? { id: t.id } : {}), nombre: t.nombre, tipo: t.tipo, activo: t.activo })),
+      equipos_frio: equipos.map((e) => ({
+        ...(e.id ? { id: e.id } : {}),
+        nombre: e.nombre,
+        tipo: e.tipo,
+        temp_min: e.min === '' || e.min === '-' ? null : Number(e.min),
+        temp_max: e.max === '' || e.max === '-' ? null : Number(e.max),
+        activo: e.activo,
+      })),
     });
 
   return (
@@ -95,6 +134,17 @@ const SucursalForm = ({ registro, datos, errores, guardando, onGuardar, onCancel
           ))}
         </Box>
       </Box>
+
+      <CampoTexto
+        id="sucursal-ventas-visibles"
+        label="Últimas ventas visibles para el vendedor"
+        value={ventasVisibles}
+        onChange={(e) => setVentasVisibles(e.target.value.replace(/\D/g, '').slice(0, 3))}
+        error={errores.ventas_visibles_vendedor}
+        helperText={errores.ventas_visibles_vendedor ?? 'El vendedor solo ve estas últimas ventas en el historial del día y en el corte de caja (0 = ninguna, máx. 100).'}
+        slotProps={{ htmlInput: { inputMode: 'numeric', maxLength: 3 } }}
+        sx={{ maxWidth: 360 }}
+      />
 
       {/* Terminales POS */}
       <Box>
@@ -162,13 +212,77 @@ const SucursalForm = ({ registro, datos, errores, guardando, onGuardar, onCancel
         </Button>
       </Box>
 
+      {/* Congeladores y refrigeradores: se revisan en el checklist de apertura de esta sucursal */}
+      <Box>
+        <Etiqueta>Congeladores y refrigeradores</Etiqueta>
+        <Typography sx={{ mb: 1, fontSize: '0.75rem', color: COLORS.muted }}>
+          Se revisan en el checklist de apertura. Indica entre cuántos grados debe estar cada uno; usa ± para temperaturas bajo cero.
+        </Typography>
+        <Box sx={{ display: 'grid', gap: 1 }}>
+          {equipos.map((e, i) => (
+            <Box key={e.clave} sx={{ display: 'grid', gap: 0.75, p: 1, borderRadius: 2, border: `1px solid ${COLORS.border}`, opacity: e.activo ? 1 : 0.7 }}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.5fr) minmax(0, 1fr) auto auto', alignItems: 'start', gap: 0.75 }}>
+                <CampoTexto
+                  value={e.nombre}
+                  onChange={(ev) => cambiarEquipo(e.clave, { nombre: ev.target.value })}
+                  placeholder="Ej. Congelador vitrina 1"
+                  error={errores[`equipos_frio.${i}.nombre`]}
+                  slotProps={{ htmlInput: { maxLength: 60, 'aria-label': `Nombre del equipo ${i + 1}` } }}
+                />
+                <CampoTexto select value={e.tipo} onChange={(ev) => cambiarTipoEquipo(e, ev.target.value)} error={errores[`equipos_frio.${i}.tipo`]} slotProps={{ htmlInput: { 'aria-label': `Tipo del equipo ${i + 1}` } }}>
+                  {TIPOS_EQUIPO.map((t) => (
+                    <MenuItem key={t.id} value={t.id}>
+                      {t.label}
+                    </MenuItem>
+                  ))}
+                </CampoTexto>
+                <Tooltip title={e.activo ? 'Se revisa en el checklist' : 'No se revisa (inactivo)'}>
+                  <Switch checked={e.activo} onChange={(ev) => cambiarEquipo(e.clave, { activo: ev.target.checked })} slotProps={{ input: { 'aria-label': `Equipo ${i + 1} activo` } }} />
+                </Tooltip>
+                <Tooltip title="Quitar">
+                  <IconButton aria-label={`Quitar equipo ${i + 1}`} onClick={() => setEquipos((lista) => lista.filter((x) => x.clave !== e.clave))} sx={{ mt: 0.25, color: COLORS.red }}>
+                    <DeleteOutlined fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </Box>
+              <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 0.75 }}>
+                {[
+                  { campo: 'min', api: 'temp_min', label: 'Mínima' },
+                  { campo: 'max', api: 'temp_max', label: 'Máxima' },
+                ].map(({ campo, api, label }) => (
+                  <Box key={campo}>
+                    <Typography sx={{ mb: 0.25, fontSize: '0.72rem', fontWeight: 600, color: COLORS.label }}>{label}</Typography>
+                    <CampoTemperatura
+                      fullWidth
+                      size="small"
+                      value={e[campo]}
+                      onChange={(valor) => cambiarEquipo(e.clave, { [campo]: valor })}
+                      placeholder={campo === 'min' ? '-30' : '-15'}
+                      error={Boolean(errores[`equipos_frio.${i}.${api}`])}
+                      helperText={errores[`equipos_frio.${i}.${api}`]}
+                      sx={campoSx}
+                      slotProps={{ htmlInput: { 'aria-label': `Temperatura ${label.toLowerCase()} del equipo ${i + 1}` } }}
+                    />
+                  </Box>
+                ))}
+              </Box>
+            </Box>
+          ))}
+        </Box>
+        {!equipos.length && <Typography sx={{ fontSize: '0.8rem', color: COLORS.muted }}>Sin equipos: el checklist no pedirá temperaturas en esta sucursal.</Typography>}
+        {errores.equipos_frio && <Typography sx={{ mt: 0.5, fontSize: '0.75rem', color: COLORS.red }}>{errores.equipos_frio}</Typography>}
+        <Button startIcon={<Add />} onClick={() => setEquipos((lista) => [...lista, filaEquipo({ nombre: '', tipo: 'congelador', temp_min: -30, temp_max: -15 })])} sx={{ mt: 1, textTransform: 'none', fontWeight: 600 }}>
+          Agregar congelador o refrigerador
+        </Button>
+      </Box>
+
       {registro?.es_matriz ? (
         <Typography sx={{ fontSize: '0.8rem', color: COLORS.muted }}>Es la sucursal matriz: siempre está activa y no se puede eliminar.</Typography>
       ) : (
         <Interruptor titulo="Sucursal operando" descripcion="Desactívala si cierra temporalmente" checked={activo} onChange={setActivo} />
       )}
 
-      <ErroresGenerales errores={errores} conocidos={['nombre', 'codigo', 'direccion', 'telefono', 'correo', 'id_encargado', 'hora_apertura', 'hora_cierre', 'terminales']} />
+      <ErroresGenerales errores={errores} conocidos={['nombre', 'codigo', 'direccion', 'telefono', 'correo', 'id_encargado', 'hora_apertura', 'hora_cierre', 'terminales', 'equipos_frio', 'ventas_visibles_vendedor']} />
       <PieFormulario guardando={guardando} onCancelar={onCancelar} etiqueta={registro ? 'Guardar cambios' : 'Guardar y activar sucursal'} />
     </Formulario>
   );

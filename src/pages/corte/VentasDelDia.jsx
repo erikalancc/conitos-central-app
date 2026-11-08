@@ -94,6 +94,8 @@ const VentasDelDia = ({ resumen, sx }) => {
   const [abierto, setAbierto] = useState(true);
   const [filtro, setFiltro] = useState('todas');
 
+  // Vendedor: el API solo envía sus últimas N ventas (resumen.visibles)
+  const limitada = resumen.visibles != null;
   const metodos = Object.fromEntries(resumen.porMetodo.map((m) => [m.id, m]));
   // Más recientes primero
   const ventas = [...resumen.ventas].reverse().filter((v) => filtro === 'todas' || v.metodo === filtro);
@@ -111,9 +113,11 @@ const VentasDelDia = ({ resumen, sx }) => {
         </IconTile>
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography component="h2" sx={tituloSeccionSx}>
-            Ventas del día ({resumen.tickets})
+            {limitada ? `Últimas ${resumen.visibles} ventas` : `Ventas del día (${resumen.tickets})`}
           </Typography>
-          <Typography sx={subtituloSx}>Detalle de cada venta con su forma de pago</Typography>
+          <Typography sx={subtituloSx}>
+            {limitada ? 'Solo se muestran las ventas más recientes' : 'Detalle de cada venta con su forma de pago'}
+          </Typography>
         </Box>
         <IconButton component="span" tabIndex={-1} sx={{ backgroundColor: COLORS.inputBg, transform: abierto ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
           <ExpandMore />
@@ -122,8 +126,8 @@ const VentasDelDia = ({ resumen, sx }) => {
 
       <Collapse in={abierto}>
         <Box sx={{ borderTop: `1px solid ${COLORS.border}` }}>
-          {/* Filtro por forma de pago */}
-          <Box sx={{ display: 'flex', gap: 0.75, p: 1.5, overflowX: 'auto' }}>
+          {/* Filtro por forma de pago (con totales: no se muestra cuando la lista está limitada) */}
+          <Box sx={{ display: limitada ? 'none' : 'flex', gap: 0.75, p: 1.5, overflowX: 'auto' }}>
             {filtros.map((f) => {
               const activo = filtro === f.id;
               const color = COLOR_METODO[f.id];

@@ -4,19 +4,12 @@ import {
   Button,
   ButtonBase,
   Chip,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   Divider,
   IconButton,
   ListItemIcon,
   ListItemText,
   Menu,
   MenuItem,
-  TextField,
-  ToggleButton,
-  ToggleButtonGroup,
   Tooltip,
   Typography,
 } from '@mui/material';
@@ -31,7 +24,6 @@ import {
   MoreVert,
   PauseCircleOutlined,
   PaymentsOutlined,
-  PersonOutlined,
   PointOfSale,
   PrintOutlined,
   QrCode2,
@@ -48,18 +40,21 @@ const ICONOS_PAGO = { efectivo: <PaymentsOutlined />, tarjeta: <CreditCard />, s
 // Pantallas bajas: se ocultan acciones secundarias (siguen en el menú ⋮)
 const PANTALLA_BAJA = '@media (max-height: 820px)';
 
+// Tarjeta de cada producto en la orden (tamaños al 80% del diseño original)
+const ICONO_LINEA = { fontSize: '1rem' };
+
 const OrdenLinea = ({ linea, onCantidad, onQuitar, onModificar }) => (
-  <Box sx={{ p: 1.5, borderRadius: 3, backgroundColor: COLORS.surfaceAlt, border: `1px solid ${COLORS.border}` }}>
-    <Box sx={{ display: 'flex', gap: 1.25, alignItems: 'flex-start' }}>
+  <Box sx={{ p: 1.2, borderRadius: 2.4, backgroundColor: COLORS.surfaceAlt, border: `1px solid ${COLORS.border}` }}>
+    <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
       <Box
         sx={{
-          minWidth: 32,
-          height: 26,
-          px: 0.75,
-          borderRadius: 1.5,
+          minWidth: 26,
+          height: 21,
+          px: 0.6,
+          borderRadius: 1.2,
           display: 'grid',
           placeItems: 'center',
-          fontSize: '0.8rem',
+          fontSize: '0.64rem',
           fontWeight: 700,
           color: COLORS.blueText,
           backgroundColor: COLORS.blueSoft,
@@ -68,37 +63,38 @@ const OrdenLinea = ({ linea, onCantidad, onQuitar, onModificar }) => (
         {linea.cantidad}×
       </Box>
       <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Typography sx={{ fontWeight: 600, fontSize: '0.98rem', lineHeight: 1.3, color: COLORS.ink }}>{linea.nombre}</Typography>
+        <Typography sx={{ fontWeight: 600, fontSize: '0.78rem', lineHeight: 1.3, color: COLORS.ink }}>{linea.nombre}</Typography>
         {describirLinea(linea) && (
-          <Typography sx={{ mt: 0.25, fontSize: '0.8rem', color: COLORS.muted }}>{describirLinea(linea)}</Typography>
+          <Typography sx={{ mt: 0.2, fontSize: '0.64rem', color: COLORS.muted }}>{describirLinea(linea)}</Typography>
         )}
       </Box>
-      <Typography sx={{ fontWeight: 700, fontSize: '0.98rem', whiteSpace: 'nowrap', color: COLORS.ink }}>
+      <Typography sx={{ fontWeight: 700, fontSize: '0.78rem', whiteSpace: 'nowrap', color: COLORS.ink }}>
         {formatMoney(importeLinea(linea))}
       </Typography>
     </Box>
-    <Divider sx={{ my: 1 }} />
+    <Divider sx={{ my: 0.8 }} />
     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
       <Button
+        size="small"
         onClick={onModificar}
-        startIcon={<EditOutlined fontSize="small" />}
-        sx={{ minHeight: 40, textTransform: 'none', fontWeight: 600, color: COLORS.blueText }}
+        startIcon={<EditOutlined sx={ICONO_LINEA} />}
+        sx={{ minHeight: 32, fontSize: '0.7rem', textTransform: 'none', fontWeight: 600, color: COLORS.blueText }}
       >
         Modificar
       </Button>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.4 }}>
         {linea.cantidad === 1 ? (
-          <IconButton aria-label={`Quitar ${linea.nombre}`} onClick={onQuitar} sx={{ width: 40, height: 40, color: COLORS.red, backgroundColor: COLORS.redSoft }}>
-            <DeleteOutlined fontSize="small" />
+          <IconButton aria-label={`Quitar ${linea.nombre}`} onClick={onQuitar} sx={{ width: 32, height: 32, color: COLORS.red, backgroundColor: COLORS.redSoft }}>
+            <DeleteOutlined sx={ICONO_LINEA} />
           </IconButton>
         ) : (
-          <IconButton aria-label="Restar uno" onClick={() => onCantidad(-1)} sx={{ width: 40, height: 40, backgroundColor: COLORS.inputBg }}>
-            <Remove fontSize="small" />
+          <IconButton aria-label="Restar uno" onClick={() => onCantidad(-1)} sx={{ width: 32, height: 32, backgroundColor: COLORS.inputBg }}>
+            <Remove sx={ICONO_LINEA} />
           </IconButton>
         )}
-        <Typography sx={{ minWidth: 28, textAlign: 'center', fontWeight: 700 }}>{linea.cantidad}</Typography>
-        <IconButton aria-label="Sumar uno" onClick={() => onCantidad(1)} sx={{ width: 40, height: 40, backgroundColor: COLORS.inputBg }}>
-          <Add fontSize="small" />
+        <Typography sx={{ minWidth: 22, textAlign: 'center', fontWeight: 700, fontSize: '0.8rem' }}>{linea.cantidad}</Typography>
+        <IconButton aria-label="Sumar uno" onClick={() => onCantidad(1)} sx={{ width: 32, height: 32, backgroundColor: COLORS.inputBg }}>
+          <Add sx={ICONO_LINEA} />
         </IconButton>
       </Box>
     </Box>
@@ -116,8 +112,6 @@ const OrdenPanel = ({
   orden,
   metodo,
   onMetodo,
-  tipoTarjeta,
-  onTipoTarjeta,
   recibido,
   onRecibido,
   cobrando,
@@ -129,23 +123,16 @@ const OrdenPanel = ({
 }) => {
   const { pedido, totales } = orden;
   const [menuAnchor, setMenuAnchor] = useState(null);
-  const [clienteDialog, setClienteDialog] = useState(false);
-  const [clienteNombre, setClienteNombre] = useState('');
   const vacia = pedido.lineas.length === 0;
   const sugeridos = montosSugeridos(totales.total);
   const cambio = metodo === 'efectivo' && recibido > totales.total ? recibido - totales.total : 0;
 
   const cerrarMenu = () => setMenuAnchor(null);
 
-  const asignarCliente = () => {
-    orden.setCliente(clienteNombre.trim() || null);
-    setClienteDialog(false);
-  };
-
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: COLORS.surface }}>
       {/* ENCABEZADO DE LA ORDEN */}
-      <Box sx={{ px: 2, pt: 2, pb: 1.5, borderBottom: `1px solid ${COLORS.border}` }}>
+      <Box sx={{ px: 2, py: 1, borderBottom: `1px solid ${COLORS.border}` }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <Typography component="h2" sx={{ fontWeight: 700, fontSize: '1.25rem', color: COLORS.ink, mr: 'auto' }}>
             Orden actual
@@ -171,62 +158,10 @@ const OrdenPanel = ({
             </IconButton>
           )}
         </Box>
-
-        <Box sx={{ display: 'flex', gap: 1, mt: 1.25 }}>
-          <ButtonBase
-            onClick={() => {
-              setClienteNombre(pedido.cliente ?? '');
-              setClienteDialog(true);
-            }}
-            sx={{
-              flex: 1,
-              minWidth: 0,
-              minHeight: 44,
-              px: 1.5,
-              gap: 1,
-              justifyContent: 'flex-start',
-              borderRadius: 2,
-              backgroundColor: COLORS.inputBg,
-              fontSize: '0.85rem',
-              color: COLORS.label,
-            }}
-          >
-            <PersonOutlined fontSize="small" sx={{ color: COLORS.blueText }} />
-            <Box component="span" sx={{ flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {pedido.cliente ?? 'Cliente General'} #{pedido.folio}
-            </Box>
-            <Box component="span" sx={{ fontWeight: 700, color: COLORS.blueText, whiteSpace: 'nowrap' }}>
-              {pedido.cliente ? 'Cambiar' : '+ Asignar'}
-            </Box>
-          </ButtonBase>
-          <ToggleButtonGroup
-            exclusive
-            value={pedido.servicio}
-            onChange={(_, valor) => valor && orden.setServicio(valor)}
-            aria-label="Tipo de servicio"
-            sx={{
-              p: 0.5,
-              borderRadius: 2,
-              backgroundColor: COLORS.inputBg,
-              '& .MuiToggleButton-root': {
-                border: 'none',
-                borderRadius: '8px !important',
-                px: 1.5,
-                textTransform: 'none',
-                fontWeight: 600,
-                color: COLORS.label,
-              },
-              '& .Mui-selected': { backgroundColor: `${COLORS.blueText} !important`, color: `${COLORS.surface} !important` },
-            }}
-          >
-            <ToggleButton value="aqui">Aquí</ToggleButton>
-            <ToggleButton value="llevar">Llevar</ToggleButton>
-          </ToggleButtonGroup>
-        </Box>
       </Box>
 
       {/* LÍNEAS */}
-      <Box sx={{ flex: 1, minHeight: 120, overflowY: 'auto', p: 2, display: 'flex', flexDirection: 'column', gap: 1.25 }}>
+      <Box sx={{ flex: 1, minHeight: 120, overflowY: 'auto', p: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
         {vacia ? (
           <Box sx={{ m: 'auto', textAlign: 'center', color: COLORS.muted, py: 4 }}>
             <ShoppingBagOutlined sx={{ fontSize: 48, opacity: 0.5 }} />
@@ -307,57 +242,26 @@ const OrdenPanel = ({
         <Box sx={{ display: 'grid', gridTemplateColumns: `repeat(${METODOS_PAGO_ACTIVOS.length}, 1fr)`, gap: 1 }}>
           {METODOS_PAGO_ACTIVOS.map((m) => {
             const activo = metodo === m.id;
+            // Solo ícono; el nombre y el atajo van en el tooltip y en aria-label
             return (
-              <ButtonBase
-                key={m.id}
-                onClick={() => onMetodo(m.id)}
-                aria-pressed={activo}
-                sx={{
-                  minHeight: 56,
-                  flexDirection: 'column',
-                  gap: 0.25,
-                  borderRadius: 2.5,
-                  fontSize: '0.78rem',
-                  fontWeight: 600,
-                  color: activo ? '#fff' : COLORS.label,
-                  backgroundColor: activo ? COLORS.blueText : COLORS.inputBg,
-                }}
-              >
-                {ICONOS_PAGO[m.id]}
-                <span>
-                  {m.label}
-                  <Box component="span" sx={{ display: { xs: 'none', md: 'inline' }, opacity: 0.75 }}>
-                    {' '}
-                    ({m.atajo})
-                  </Box>
-                </span>
-              </ButtonBase>
+              <Tooltip key={m.id} title={`${m.label} (${m.atajo})`}>
+                <ButtonBase
+                  onClick={() => onMetodo(m.id)}
+                  aria-pressed={activo}
+                  aria-label={m.label}
+                  sx={{
+                    minHeight: 40,
+                    borderRadius: 2,
+                    color: activo ? '#fff' : COLORS.label,
+                    backgroundColor: activo ? COLORS.blueText : COLORS.inputBg,
+                  }}
+                >
+                  {ICONOS_PAGO[m.id]}
+                </ButtonBase>
+              </Tooltip>
             );
           })}
         </Box>
-
-        {metodo === 'tarjeta' && !vacia && (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1.25 }}>
-            <Typography sx={{ fontSize: '0.8rem', color: COLORS.label }}>Tipo de tarjeta:</Typography>
-            <ToggleButtonGroup
-              exclusive
-              value={tipoTarjeta}
-              onChange={(_, valor) => valor && onTipoTarjeta(valor)}
-              aria-label="Tipo de tarjeta"
-              sx={{
-                flex: 1,
-                p: 0.5,
-                borderRadius: 2,
-                backgroundColor: COLORS.inputBg,
-                '& .MuiToggleButton-root': { flex: 1, minHeight: 36, border: 'none', borderRadius: '8px !important', textTransform: 'none', fontWeight: 700, color: COLORS.label },
-                '& .Mui-selected': { backgroundColor: `${COLORS.blueText} !important`, color: `${COLORS.surface} !important` },
-              }}
-            >
-              <ToggleButton value="debito">Débito</ToggleButton>
-              <ToggleButton value="credito">Crédito</ToggleButton>
-            </ToggleButtonGroup>
-          </Box>
-        )}
 
         {metodo === 'efectivo' && !vacia && (
           <>
@@ -369,7 +273,7 @@ const OrdenPanel = ({
                   label={i === 0 ? 'Exacto' : formatMoney(monto).replace('.00', '')}
                   onClick={() => onRecibido(monto)}
                   sx={{
-                    height: 36,
+                    height: 30,
                     fontWeight: 700,
                     borderRadius: 2,
                     backgroundColor: recibido === monto ? COLORS.blueText : COLORS.inputBg,
@@ -388,7 +292,7 @@ const OrdenPanel = ({
                 alignItems: 'center',
                 mt: 1,
                 px: 1.5,
-                minHeight: 40,
+                minHeight: 34,
                 borderRadius: 2,
                 backgroundColor: cambio > 0 ? COLORS.greenSoft : COLORS.inputBg,
               }}
@@ -406,7 +310,7 @@ const OrdenPanel = ({
             onClick={onGuardar}
             disabled={vacia}
             startIcon={<PauseCircleOutlined />}
-            sx={{ minHeight: 44, borderRadius: 2, textTransform: 'none', fontWeight: 600, color: COLORS.label, backgroundColor: COLORS.inputBg }}
+            sx={{ minHeight: 36, py: 0.5, borderRadius: 2, textTransform: 'none', fontWeight: 600, color: COLORS.label, backgroundColor: COLORS.inputBg }}
           >
             Guardar Orden
           </Button>
@@ -414,7 +318,7 @@ const OrdenPanel = ({
             onClick={onPrecuenta}
             disabled={vacia}
             startIcon={<PrintOutlined />}
-            sx={{ minHeight: 44, borderRadius: 2, textTransform: 'none', fontWeight: 600, color: COLORS.label, backgroundColor: COLORS.inputBg }}
+            sx={{ minHeight: 36, py: 0.5, borderRadius: 2, textTransform: 'none', fontWeight: 600, color: COLORS.label, backgroundColor: COLORS.inputBg }}
           >
             Pre-cuenta
           </Button>
@@ -440,7 +344,7 @@ const OrdenPanel = ({
           onClick={onCobrar}
           startIcon={<PointOfSale />}
           sx={{
-            minHeight: 60,
+            minHeight: 48,
             px: 2.5,
             borderRadius: 3,
             fontWeight: 800,
@@ -500,35 +404,6 @@ const OrdenPanel = ({
           Vaciar orden
         </MenuItem>
       </Menu>
-
-      {/* ASIGNAR CLIENTE */}
-      <Dialog open={clienteDialog} onClose={() => setClienteDialog(false)} fullWidth maxWidth="xs">
-        <DialogTitle sx={{ fontWeight: 700 }}>Asignar cliente</DialogTitle>
-        <DialogContent>
-          <TextField
-            autoFocus
-            fullWidth
-            label="Nombre del cliente"
-            value={clienteNombre}
-            onChange={(e) => setClienteNombre(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && asignarCliente()}
-            sx={{ mt: 1 }}
-          />
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          {pedido.cliente && (
-            <Button onClick={() => { orden.setCliente(null); setClienteDialog(false); }} sx={{ mr: 'auto', textTransform: 'none' }}>
-              Quitar
-            </Button>
-          )}
-          <Button onClick={() => setClienteDialog(false)} sx={{ textTransform: 'none' }}>
-            Cancelar
-          </Button>
-          <Button variant="contained" disableElevation onClick={asignarCliente} sx={{ textTransform: 'none', minHeight: 44 }}>
-            Asignar
-          </Button>
-        </DialogActions>
-      </Dialog>
     </Box>
   );
 };

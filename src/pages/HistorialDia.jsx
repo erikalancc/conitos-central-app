@@ -3,6 +3,8 @@ import { Alert, Box, Button, CircularProgress, IconButton, Typography } from '@m
 import { ArrowBack, InfoOutlined } from '@mui/icons-material';
 import { useNavigate, useParams } from 'react-router-dom';
 import { mensajeDeError } from '../api/axiosClient';
+import { ROLES } from '../auth/roles';
+import { getSession } from '../auth/session';
 import IconTile from '../components/IconTile';
 import Panel from '../components/Panel';
 import { construirResumen, corteDesdeApi, obtenerCortes } from '../services/corteService';
@@ -33,18 +35,22 @@ const SIN_CORTES = [];
 const HistorialDia = () => {
   const { fecha } = useParams();
   const navigate = useNavigate();
-  const [estado, setEstado] = useState({ fecha: null, ventas: null, cortes: SIN_CORTES, error: '' });
+  const esVendedor = getSession()?.id_rol === ROLES.CAJERO;
+  const [estado, setEstado] = useState({ fecha: null, ventas: null, visibles: null, cortes: SIN_CORTES, error: '' });
 
   useEffect(() => {
     let vigente = true;
-    Promise.all([obtenerVentasDelDia(fecha), obtenerCortes({ desde: fecha, hasta: fecha })])
+    // El vendedor no consulta cortes (solo ve sus últimas ventas de hoy)
+    Promise.all([obtenerVentasDelDia(fecha), esVendedor ? SIN_CORTES : obtenerCortes({ desde: fecha, hasta: fecha })])
       // Del primer turno al último
-      .then(([ventas, cortes]) => vigente && setEstado({ fecha, ventas: ventas.map(ventaDesdeApi), cortes: cortes.map(corteDesdeApi).reverse(), error: '' }))
-      .catch((e) => vigente && setEstado({ fecha, ventas: null, cortes: SIN_CORTES, error: mensajeDeError(e, 'No se pudieron cargar las ventas del día.') }));
+      .then(([{ ventas, visibles }, cortes]) =>
+        vigente && setEstado({ fecha, ventas: ventas.map(ventaDesdeApi), visibles, cortes: cortes.map(corteDesdeApi).reverse(), error: '' })
+      )
+      .catch((e) => vigente && setEstado({ fecha, ventas: null, visibles: null, cortes: SIN_CORTES, error: mensajeDeError(e, 'No se pudieron cargar las ventas del día.') }));
     return () => {
       vigente = false;
     };
-  }, [fecha]);
+  }, [fecha, esVendedor]);
 
   const ventas = estado.fecha === fecha ? estado.ventas : null;
   const cortes = estado.fecha === fecha ? estado.cortes : SIN_CORTES;
@@ -97,6 +103,18 @@ const HistorialDia = () => {
           Volver al historial
         </Button>
       </Panel>
+    );
+  }
+
+  // Vendedor: solo la lista de sus últimas ventas, sin totales ni cortes
+  if (estado.visibles != null) {
+    return (
+      <Box sx={{ display: 'grid', gap: GAP }}>
+        <Typography component="h1" sx={{ fontWeight: 800, fontSize: '1.3rem', color: COLORS.ink }}>
+          Ventas de hoy · {formatLongDate(new Date(`${fecha}T12:00:00`))}
+        </Typography>
+        <VentasDelDia resumen={{ ...resumen, visibles: estado.visibles }} />
+      </Box>
     );
   }
 

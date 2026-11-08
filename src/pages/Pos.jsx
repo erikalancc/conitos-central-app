@@ -74,7 +74,8 @@ const Pos = () => {
   const [filtrosAnchor, setFiltrosAnchor] = useState(null);
   const [personalizar, setPersonalizar] = useState(null);
   const [metodo, setMetodo] = useState('efectivo');
-  const [tipoTarjeta, setTipoTarjeta] = useState('debito');
+  // Ya no se pregunta débito/crédito: todo cobro con tarjeta se registra como débito
+  const tipoTarjeta = 'debito';
   const [recibido, setRecibido] = useState(null);
   const [cobrando, setCobrando] = useState(false);
   const [venta, setVenta] = useState(null);
@@ -203,7 +204,6 @@ const Pos = () => {
     setVenta(null);
     setRecibido(null);
     setMetodo('efectivo');
-    setTipoTarjeta('debito');
   };
 
   const handleGuardar = async () => {
@@ -217,8 +217,6 @@ const Pos = () => {
     orden,
     metodo,
     onMetodo: setMetodo,
-    tipoTarjeta,
-    onTipoTarjeta: setTipoTarjeta,
     recibido: recibidoValido,
     onRecibido: setRecibido,
     cobrando,

@@ -93,7 +93,8 @@ const MovimientoDialog = ({ open, onClose, onGuardar }) => {
   );
 };
 
-const MovimientosEfectivo = ({ resumen, onRegistrar }) => {
+// aCiegas (vendedor): oculta ventas en efectivo y efectivo esperado, para que el conteo del corte sea a ciegas
+const MovimientosEfectivo = ({ resumen, onRegistrar, aCiegas = false }) => {
   const [dialogo, setDialogo] = useState(false);
 
   const handleGuardar = async (movimiento) => {
@@ -125,15 +126,17 @@ const MovimientosEfectivo = ({ resumen, onRegistrar }) => {
           detalle={resumen.apertura ? `Apertura a las ${hora(resumen.apertura.fecha)} hrs${resumen.apertura.usuario ? ` por ${resumen.apertura.usuario}` : ''}` : 'Sin apertura registrada en este turno'}
           monto={formatMoney(resumen.fondo)}
         />
-        <Movimiento
-          icono={<PaymentsOutlined />}
-          iconoBg="#dcfce7"
-          iconoColor="#15803d"
-          titulo="Ventas en efectivo"
-          detalle={`${resumen.porMetodo.find((m) => m.id === 'efectivo')?.transacciones ?? 0} ventas cobradas en efectivo`}
-          monto={`+${formatMoney(resumen.efectivo)}`}
-          montoColor="#15803d"
-        />
+        {!aCiegas && (
+          <Movimiento
+            icono={<PaymentsOutlined />}
+            iconoBg="#dcfce7"
+            iconoColor="#15803d"
+            titulo="Ventas en efectivo"
+            detalle={`${resumen.porMetodo.find((m) => m.id === 'efectivo')?.transacciones ?? 0} ventas cobradas en efectivo`}
+            monto={`+${formatMoney(resumen.efectivo)}`}
+            montoColor="#15803d"
+          />
+        )}
         {resumen.movimientos.map((m) => (
           <Movimiento
             key={m.id}
@@ -150,7 +153,7 @@ const MovimientosEfectivo = ({ resumen, onRegistrar }) => {
 
       <Box
         sx={{
-          display: 'flex',
+          display: aCiegas ? 'none' : 'flex',
           alignItems: 'center',
           gap: 1.5,
           mt: 2,

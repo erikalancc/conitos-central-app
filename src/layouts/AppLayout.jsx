@@ -1,6 +1,16 @@
 import { useEffect, useState } from 'react';
-import { Avatar, Box, Button, Chip, IconButton, Tooltip, Typography } from '@mui/material';
-import { DarkModeOutlined, LightModeOutlined, LockOutlined } from '@mui/icons-material';
+import { Avatar, Box, Button, Chip, Divider, Drawer, IconButton, Tooltip, Typography } from '@mui/material';
+import {
+  AdminPanelSettingsOutlined,
+  Close,
+  DarkModeOutlined,
+  HistoryOutlined,
+  LightModeOutlined,
+  LockOutlined,
+  Menu as MenuIcon,
+  PointOfSale,
+  ReceiptLongOutlined,
+} from '@mui/icons-material';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import logoConitos from '../assets/logo-conitos.png';
 import { puedeEntrar } from '../auth/roles';
@@ -11,6 +21,7 @@ import useClock from '../hooks/useClock';
 import useModoColor from '../hooks/useModoColor';
 import { COLORS, safe } from '../theme';
 import { formatLongDate, formatTime } from '../utils/format';
+import ChecklistObligatorio from '../pages/inicio/ChecklistObligatorio';
 
 const YEAR = new Date().getFullYear();
 
@@ -18,84 +29,266 @@ const YEAR = new Date().getFullYear();
 const PANTALLA_COMPLETA = ['/pos'];
 
 const NAV_ITEMS = [
-  { to: '/pos', label: 'Terminal POS', modulo: 'pos' },
-  { to: '/corte', label: 'Corte de Caja', modulo: 'corte' },
-  { to: '/historial', label: 'Historial', modulo: 'historial' },
-  { to: '/admin', label: 'Administración', modulo: 'admin' },
+  { to: '/pos', label: 'Terminal POS', modulo: 'pos', icono: <PointOfSale /> },
+  { to: '/corte', label: 'Corte de Caja', modulo: 'corte', icono: <ReceiptLongOutlined /> },
+  { to: '/historial', label: 'Historial', modulo: 'historial', icono: <HistoryOutlined /> },
+  { to: '/admin', label: 'Administración', modulo: 'admin', icono: <AdminPanelSettingsOutlined /> },
 ];
 
-const Clock = () => {
+// Ancho del riel lateral (siempre visible)
+const ANCHO_RIEL = { xs: 60, md: 72 };
+const ANCHO_MENU = 300;
+
+// Estilo común de los botones sobre el azul de la marca
+const BOTON_MARCA = {
+  color: COLORS.brandText,
+  backgroundColor: COLORS.brandSoft,
+  '&:hover': { backgroundColor: 'rgba(255, 255, 255, 0.26)' },
+};
+
+const ESTILO_ACTIVO = {
+  backgroundColor: COLORS.brandActive,
+  color: COLORS.brandActiveText,
+  boxShadow: '0 1px 3px rgba(15, 23, 42, 0.18)',
+  '&:hover': { backgroundColor: COLORS.brandActive },
+};
+
+const navPermitida = () => NAV_ITEMS.filter((item) => puedeEntrar(getSession(), item.modulo));
+
+const Reloj = () => {
   const now = useClock();
   return (
-    <Box sx={{ display: { xs: 'none', sm: 'block', md: 'none', lg: 'block' }, textAlign: 'right', lineHeight: 1.2 }}>
-      <Typography sx={{ fontWeight: 600, fontSize: '1.15rem', fontVariantNumeric: 'tabular-nums', color: COLORS.brandText }}>
+    <Box sx={{ p: 1.5, borderRadius: 2.5, backgroundColor: COLORS.brandSoft, lineHeight: 1.2 }}>
+      <Typography sx={{ fontWeight: 600, fontSize: '1.5rem', fontVariantNumeric: 'tabular-nums', color: COLORS.brandText }}>
         {formatTime(now)}
       </Typography>
-      <Typography sx={{ fontSize: '0.72rem', color: COLORS.brandText, opacity: 0.85 }}>{formatLongDate(now)}</Typography>
+      <Typography sx={{ fontSize: '0.75rem', color: COLORS.brandText, opacity: 0.85, textTransform: 'capitalize' }}>
+        {formatLongDate(now)}
+      </Typography>
     </Box>
   );
 };
 
-// Cambia entre modo día y noche (se recuerda en este equipo)
-const BotonModo = () => {
+/* ---------------- RIEL LATERAL (siempre visible, solo íconos) ---------------- */
+
+const RielLateral = ({ onAbrirMenu, onBloquear }) => {
   const { modo, alternar } = useModoColor();
   const oscuro = modo === 'oscuro';
+  const user = getSession();
+
+  // Los botones del riel no deben abrir el menú al hacer clic
+  const sinPropagar = (fn) => (e) => {
+    e.stopPropagation();
+    fn?.();
+  };
+
+  const tamBoton = { width: { xs: 44, md: 48 }, height: { xs: 44, md: 48 }, borderRadius: 2.5 };
+
   return (
-    <Tooltip title={oscuro ? 'Cambiar a modo día' : 'Cambiar a modo noche'}>
-      <IconButton
-        onClick={alternar}
-        aria-label={oscuro ? 'Cambiar a modo día' : 'Cambiar a modo noche'}
-        sx={{ width: 48, height: 48, borderRadius: 2.5, color: COLORS.brandText, backgroundColor: COLORS.brandSoft, '&:hover': { backgroundColor: 'rgba(255, 255, 255, 0.26)' } }}
-      >
-        {oscuro ? <LightModeOutlined /> : <DarkModeOutlined />}
-      </IconButton>
-    </Tooltip>
+    <Box
+      component="aside"
+      aria-label="Menú lateral"
+      onClick={onAbrirMenu}
+      sx={{
+        flexShrink: 0,
+        width: ANCHO_RIEL,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 1,
+        pt: safe('top', 12),
+        pb: safe('bottom', 12),
+        pl: safe('left', 0),
+        cursor: 'pointer',
+        zIndex: (theme) => theme.zIndex.appBar,
+        backgroundColor: COLORS.brand,
+        boxShadow: '2px 0 8px rgba(15, 23, 42, 0.12)',
+        overflowY: 'auto',
+      }}
+    >
+      <Tooltip title="Abrir menú" placement="right">
+        <IconButton aria-label="Abrir menú" onClick={sinPropagar(onAbrirMenu)} sx={{ ...tamBoton, ...BOTON_MARCA }}>
+          <MenuIcon />
+        </IconButton>
+      </Tooltip>
+
+      <Avatar
+        src={logoConitos}
+        alt="Conitos Central"
+        sx={{ width: 40, height: 40, my: 0.5, backgroundColor: '#fff', border: '2px solid rgba(255, 255, 255, 0.6)', '& img': { objectFit: 'contain', p: 0.25 } }}
+      />
+
+      <Divider flexItem sx={{ mx: 1.5, borderColor: 'rgba(255, 255, 255, 0.25)' }} />
+
+      {/* Accesos directos a cada módulo */}
+      <Box component="nav" sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+        {navPermitida().map((item) => (
+          <Tooltip key={item.to} title={item.label} placement="right">
+            <IconButton
+              component={NavLink}
+              to={item.to}
+              aria-label={item.label}
+              onClick={(e) => e.stopPropagation()}
+              sx={{ ...tamBoton, color: COLORS.brandText, '&:hover': { backgroundColor: COLORS.brandSoft }, '&.active': ESTILO_ACTIVO }}
+            >
+              {item.icono}
+            </IconButton>
+          </Tooltip>
+        ))}
+      </Box>
+
+      <Box sx={{ flex: 1 }} />
+
+      <Tooltip title={oscuro ? 'Cambiar a modo día' : 'Cambiar a modo noche'} placement="right">
+        <IconButton aria-label={oscuro ? 'Cambiar a modo día' : 'Cambiar a modo noche'} onClick={sinPropagar(alternar)} sx={{ ...tamBoton, ...BOTON_MARCA }}>
+          {oscuro ? <LightModeOutlined /> : <DarkModeOutlined />}
+        </IconButton>
+      </Tooltip>
+
+      <Tooltip title="Bloquear terminal" placement="right">
+        <IconButton aria-label="Bloquear terminal" onClick={sinPropagar(onBloquear)} sx={{ ...tamBoton, ...BOTON_MARCA }}>
+          <LockOutlined />
+        </IconButton>
+      </Tooltip>
+
+      <Tooltip title={`${user?.nombre ?? ''} · ${user?.rol ?? ''}`} placement="right">
+        <Avatar src={logoConitos} alt={user?.nombre} sx={{ width: 36, height: 36, mt: 0.5, backgroundColor: '#fff', '& img': { objectFit: 'contain' } }} />
+      </Tooltip>
+    </Box>
   );
 };
 
-const MainNav = ({ sx }) => (
-  <Box
-    component="nav"
-    sx={[
-      {
-        display: 'flex',
-        gap: 0.5,
-        p: 0.5,
-        borderRadius: 2.5,
-        backgroundColor: COLORS.brandSoft,
-        overflowX: 'auto',
-      },
-      sx,
-    ]}
-  >
-    {NAV_ITEMS.filter((item) => puedeEntrar(getSession(), item.modulo)).map((item) => (
-      <Button
-        key={item.to}
-        component={NavLink}
-        to={item.to}
-        sx={{
-          flex: { xs: 1, md: 'none' },
-          px: 2.5,
-          minHeight: 44,
-          whiteSpace: 'nowrap',
-          borderRadius: 2,
-          textTransform: 'none',
-          fontWeight: 600,
-          fontSize: '0.9rem',
-          color: COLORS.brandText,
-          '&:hover': { backgroundColor: COLORS.brandSoft },
-          '&.active': {
-            backgroundColor: COLORS.brandActive,
-            color: COLORS.brandActiveText,
-            boxShadow: '0 1px 3px rgba(15, 23, 42, 0.18)',
+/* ---------------- MENÚ COMPLETO (se abre al tocar el riel) ---------------- */
+
+const MenuPrincipal = ({ abierto, onCerrar, onBloquear }) => {
+  const { modo, alternar } = useModoColor();
+  const oscuro = modo === 'oscuro';
+  const user = getSession();
+
+  const botonFila = {
+    minHeight: 48,
+    px: 2,
+    justifyContent: 'flex-start',
+    gap: 1.5,
+    borderRadius: 2.5,
+    textTransform: 'none',
+    fontWeight: 600,
+    fontSize: '0.92rem',
+  };
+
+  return (
+    <Drawer
+      anchor="left"
+      open={abierto}
+      onClose={onCerrar}
+      slotProps={{
+        paper: {
+          sx: {
+            width: ANCHO_MENU,
+            maxWidth: '85vw',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 2,
+            pt: safe('top', 16),
+            pb: safe('bottom', 16),
+            pl: safe('left', 16),
+            pr: 2,
+            color: COLORS.brandText,
+            backgroundColor: COLORS.brand,
+            borderTopRightRadius: 16,
+            borderBottomRightRadius: 16,
           },
-        }}
-      >
-        {item.label}
-      </Button>
-    ))}
-  </Box>
-);
+        },
+      }}
+    >
+      {/* Marca */}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+        <Avatar
+          src={logoConitos}
+          alt="Conitos Central"
+          sx={{ width: 44, height: 44, backgroundColor: '#fff', border: '2px solid rgba(255, 255, 255, 0.6)', '& img': { objectFit: 'contain', p: 0.25 } }}
+        />
+        <Box sx={{ flex: 1, minWidth: 0, lineHeight: 1.2 }}>
+          <Typography noWrap sx={{ fontWeight: 700, fontSize: '1.05rem' }}>
+            Conitos Central
+          </Typography>
+          <Typography noWrap sx={{ fontSize: '0.72rem', opacity: 0.85 }}>
+            {user?.sucursal ?? `Terminal #${TERMINAL.numero}`}
+          </Typography>
+        </Box>
+        <IconButton aria-label="Cerrar menú" onClick={onCerrar} sx={{ width: 40, height: 40, borderRadius: 2, ...BOTON_MARCA }}>
+          <Close />
+        </IconButton>
+      </Box>
+
+      <Chip
+        size="small"
+        icon={<Box sx={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: COLORS.yellow }} />}
+        label="En Línea • Conectado"
+        sx={{ alignSelf: 'flex-start', pl: 0.75, backgroundColor: COLORS.brandSoft, color: COLORS.brandText, fontSize: '0.72rem' }}
+      />
+
+      <Reloj />
+
+      {/* Usuario */}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, p: 1.25, borderRadius: 2.5, backgroundColor: COLORS.brandSoft }}>
+        <Avatar src={logoConitos} alt={user?.nombre} sx={{ width: 40, height: 40, backgroundColor: '#fff', '& img': { objectFit: 'contain' } }} />
+        <Box sx={{ minWidth: 0, lineHeight: 1.2 }}>
+          <Typography noWrap sx={{ fontWeight: 600, fontSize: '0.92rem' }}>
+            {user?.nombre}
+          </Typography>
+          <Typography sx={{ fontWeight: 600, fontSize: '0.75rem', opacity: 0.85 }}>{user?.rol}</Typography>
+        </Box>
+      </Box>
+
+      {/* Navegación */}
+      <Box>
+        <Typography sx={{ px: 1, mb: 0.75, fontSize: '0.7rem', fontWeight: 700, letterSpacing: 0.8, opacity: 0.8 }}>MÓDULOS</Typography>
+        <Box component="nav" sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+          {navPermitida().map((item) => (
+            <Button
+              key={item.to}
+              component={NavLink}
+              to={item.to}
+              onClick={onCerrar}
+              startIcon={item.icono}
+              sx={{
+                ...botonFila,
+                color: COLORS.brandText,
+                '& .MuiButton-startIcon': { m: 0 },
+                '&:hover': { backgroundColor: COLORS.brandSoft },
+                '&.active': ESTILO_ACTIVO,
+              }}
+            >
+              {item.label}
+            </Button>
+          ))}
+        </Box>
+      </Box>
+
+      <Box sx={{ flex: 1 }} />
+
+      {/* Acciones */}
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+        <Button onClick={alternar} startIcon={oscuro ? <LightModeOutlined /> : <DarkModeOutlined />} sx={{ ...botonFila, ...BOTON_MARCA, '& .MuiButton-startIcon': { m: 0 } }}>
+          {oscuro ? 'Modo día' : 'Modo noche'}
+        </Button>
+        <Button onClick={onBloquear} startIcon={<LockOutlined />} sx={{ ...botonFila, ...BOTON_MARCA, '& .MuiButton-startIcon': { m: 0 } }}>
+          Bloquear terminal
+        </Button>
+      </Box>
+
+      {/* Estado del equipo (antes en el pie de página) */}
+      <Box sx={{ pt: 1.5, borderTop: '1px solid rgba(255, 255, 255, 0.25)', fontSize: '0.7rem', opacity: 0.85, display: 'grid', gap: 0.25 }}>
+        <span>Conitos POS {TERMINAL.version}</span>
+        <span>Impresora Térmica: Lista · Gaveta: Conectada</span>
+        <span>© {YEAR} Conitos Central</span>
+      </Box>
+    </Drawer>
+  );
+};
+
+/* ---------------- LAYOUT ---------------- */
 
 const AppLayout = () => {
   // Rol y nombre al día al entrar: si cambiaron, el menú y los permisos se ajustan sin volver a iniciar sesión
@@ -106,134 +299,29 @@ const AppLayout = () => {
       .catch(() => {});
   }, []);
 
+  const [menuAbierto, setMenuAbierto] = useState(false);
   const navigate = useNavigate();
-  const user = getSession();
   const pantallaCompleta = PANTALLA_COMPLETA.includes(useLocation().pathname);
 
   const handleBloquear = () => {
+    setMenuAbierto(false);
     clearSession();
     navigate('/login', { replace: true });
   };
 
   return (
-    <Box sx={{ height: '100dvh', display: 'flex', flexDirection: 'column', overflow: 'hidden', backgroundColor: COLORS.panelBg }}>
-      {/* ENCABEZADO */}
-      <Box
-        component="header"
-        sx={{
-          flexShrink: 0,
-          zIndex: (theme) => theme.zIndex.appBar,
-          backgroundColor: COLORS.brand,
-          boxShadow: '0 2px 8px rgba(15, 23, 42, 0.12)',
-          pt: safe('top', 12),
-          pb: 1.5,
-          pl: { xs: safe('left', 16), lg: safe('left', 24) },
-          pr: { xs: safe('right', 16), lg: safe('right', 24) },
-        }}
-      >
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 2 } }}>
-          {/* Marca */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, minWidth: 0, mr: 'auto' }}>
-            <Avatar
-              src={logoConitos}
-              alt="Conitos Central"
-              sx={{
-                width: 44,
-                height: 44,
-                backgroundColor: '#fff',
-                border: '2px solid rgba(255, 255, 255, 0.6)',
-                '& img': { objectFit: 'contain', p: 0.25 },
-              }}
-            />
-            <Box sx={{ minWidth: 0, lineHeight: 1.2 }}>
-              <Typography noWrap sx={{ fontWeight: 700, fontSize: '1.05rem', color: COLORS.brandText }}>
-                Conitos Central
-              </Typography>
-              <Typography noWrap sx={{ fontSize: '0.72rem', color: COLORS.brandText, opacity: 0.85 }}>
-                Terminal #{TERMINAL.numero} · {TERMINAL.sucursal}
-              </Typography>
-            </Box>
-            <Chip
-              size="small"
-              icon={<Box sx={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: COLORS.yellow }} />}
-              label="En Línea • Conectado"
-              sx={{
-                display: { xs: 'none', xl: 'inline-flex' },
-                pl: 0.75,
-                ml: 1,
-                backgroundColor: COLORS.brandSoft,
-                color: COLORS.brandText,
-                fontSize: '0.72rem',
-              }}
-            />
-          </Box>
+    <Box sx={{ height: '100dvh', display: 'flex', overflow: 'hidden', backgroundColor: COLORS.panelBg }}>
+      <RielLateral onAbrirMenu={() => setMenuAbierto(true)} onBloquear={handleBloquear} />
+      <MenuPrincipal abierto={menuAbierto} onCerrar={() => setMenuAbierto(false)} onBloquear={handleBloquear} />
+      {/* Vendedor / Cajero: checklist de apertura obligatorio en cualquier pantalla hasta guardarlo */}
+      <ChecklistObligatorio />
 
-          {/* Navegación en una sola fila (pantallas grandes) */}
-          <MainNav sx={{ display: { xs: 'none', md: 'flex' }, mx: 'auto' }} />
-
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 1.5 }, ml: 'auto' }}>
-            <Clock />
-
-            <BotonModo />
-
-            {/* Usuario */}
-            <Box
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 1,
-                p: { xs: 0, sm: 0.75 },
-                pl: { sm: 1.5 },
-                borderRadius: 2.5,
-                backgroundColor: { sm: COLORS.brandSoft, md: 'transparent', lg: COLORS.brandSoft },
-              }}
-            >
-              <Box sx={{ display: { xs: 'none', sm: 'block', md: 'none', lg: 'block' }, textAlign: 'right', lineHeight: 1.2 }}>
-                <Typography noWrap sx={{ fontWeight: 600, fontSize: '0.88rem', color: COLORS.brandText, maxWidth: 160 }}>
-                  {user?.nombre}
-                </Typography>
-                <Typography sx={{ fontWeight: 600, fontSize: '0.72rem', color: COLORS.brandText, opacity: 0.85 }}>{user?.rol}</Typography>
-              </Box>
-              <Avatar
-                src={logoConitos}
-                alt={user?.nombre}
-                sx={{ width: 36, height: 36, backgroundColor: '#fff', '& img': { objectFit: 'contain' } }}
-              />
-            </Box>
-
-            <Button
-              onClick={handleBloquear}
-              aria-label="Bloquear terminal"
-              startIcon={<LockOutlined />}
-              sx={{
-                minHeight: 48,
-                minWidth: 48,
-                px: { xs: 1.5, sm: 2 },
-                borderRadius: 2.5,
-                textTransform: 'none',
-                fontWeight: 600,
-                color: COLORS.brandText,
-                backgroundColor: COLORS.brandSoft,
-                '& .MuiButton-startIcon': { mr: { xs: 0, sm: 1, md: 0, lg: 1 }, ml: 0 },
-                '&:hover': { backgroundColor: 'rgba(255, 255, 255, 0.26)' },
-              }}
-            >
-              <Box component="span" sx={{ display: { xs: 'none', sm: 'inline', md: 'none', lg: 'inline' } }}>
-                Bloquear
-              </Box>
-            </Button>
-          </Box>
-        </Box>
-
-        {/* Navegación en segunda fila (tablet y celular) */}
-        <MainNav sx={{ display: { xs: 'flex', md: 'none' }, mt: 1.5 }} />
-      </Box>
-
-      {/* CONTENIDO */}
+      {/* CONTENIDO: ocupa todo el alto y el resto del ancho */}
       <Box
         component="main"
         sx={{
           flex: 1,
+          minWidth: 0,
           minHeight: 0,
           overflowY: pantallaCompleta ? { xs: 'auto', md: 'hidden' } : 'auto',
         }}
@@ -241,47 +329,19 @@ const AppLayout = () => {
         <Box
           sx={
             pantallaCompleta
-              ? { height: { md: '100%' }, pl: safe('left', 0), pr: safe('right', 0) }
+              ? { height: { md: '100%' }, pr: safe('right', 0) }
               : {
                   maxWidth: 1600,
                   mx: 'auto',
-                  py: { xs: 2, md: 3 },
-                  pl: { xs: safe('left', 12), sm: safe('left', 24), lg: safe('left', 32) },
+                  pt: { xs: safe('top', 16), md: safe('top', 24) },
+                  pb: { xs: safe('bottom', 16), md: safe('bottom', 24) },
+                  pl: { xs: 1.5, sm: 3, lg: 4 },
                   pr: { xs: safe('right', 12), sm: safe('right', 24), lg: safe('right', 32) },
                 }
           }
         >
           <Outlet />
         </Box>
-      </Box>
-
-      {/* PIE */}
-      <Box
-        component="footer"
-        sx={{
-          // En celular se oculta para dejar más espacio de trabajo
-          display: { xs: 'none', sm: 'flex' },
-          flexShrink: 0,
-          flexDirection: { xs: 'column', md: 'row' },
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 0.5,
-          pt: 1.5,
-          pb: safe('bottom', 12),
-          px: { xs: 2, lg: 3 },
-          borderTop: `1px solid ${COLORS.border}`,
-          backgroundColor: COLORS.surface,
-          fontSize: '0.72rem',
-          color: COLORS.label,
-          textAlign: 'center',
-        }}
-      >
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', columnGap: 2 }}>
-          <span>Conitos POS {TERMINAL.version}</span>
-          <span>· Impresora Térmica: Lista</span>
-          <span>· Gaveta: Conectada</span>
-        </Box>
-        <span>© {YEAR} Conitos Central · Sistema Operativo de Mostrador</span>
       </Box>
     </Box>
   );

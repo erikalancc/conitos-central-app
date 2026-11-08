@@ -25,7 +25,14 @@ import { useSearchParams } from 'react-router-dom';
 import { mensajeDeError } from '../api/axiosClient';
 import IconTile from '../components/IconTile';
 import Panel from '../components/Panel';
-import { actualizarRegistro, crearRegistro, eliminarRegistro, obtenerCatalogoAdmin } from '../services/catalogoAdminService';
+import {
+  actualizarRegistro,
+  crearRegistro,
+  eliminarRegistro,
+  obtenerCatalogoAdmin,
+  quitarImagenProducto,
+  subirImagenProducto,
+} from '../services/catalogoAdminService';
 import { COLORS } from '../theme';
 import { CategoriaForm, ExtraForm, PromocionForm } from './admin/FormulariosSimples';
 import ListaRegistros from './admin/ListaRegistros';
@@ -137,13 +144,28 @@ const Administracion = () => {
     setErrores({});
   };
 
-  const handleGuardar = async (datos) => {
+  // imagen (solo productos): { archivo: File | null, quitar: boolean }
+  const handleGuardar = async (datos, imagen) => {
     setGuardando(true);
     setErrores({});
     try {
-      const respuesta = editor.id ? await actualizarRegistro(recurso.id, editor.id, datos) : await crearRegistro(recurso.id, datos);
+      let respuesta = editor.id ? await actualizarRegistro(recurso.id, editor.id, datos) : await crearRegistro(recurso.id, datos);
       setCatalogo(respuesta.catalogo);
-      setEditor({ id: respuesta.id });
+      // Sabores: al guardar con éxito se cierra el editor; el resto se queda abierto con el registro guardado
+      if (recurso.id === 'sabores') cerrarEditor();
+      else setEditor({ id: respuesta.id });
+
+      // La imagen va después porque un producto nuevo necesita su id
+      try {
+        if (imagen?.archivo) respuesta = await subirImagenProducto(respuesta.id, imagen.archivo);
+        else if (imagen?.quitar) respuesta = await quitarImagenProducto(respuesta.id);
+        setCatalogo(respuesta.catalogo);
+      } catch (error) {
+        setErrores({ imagen: error.response?.data?.messages?.imagen ?? mensajeDeError(error, 'No se pudo guardar la imagen.') });
+        setAviso('El producto se guardó, pero la imagen no. Revísala e intenta de nuevo.');
+        return;
+      }
+
       setAviso(editor.id ? 'Cambios guardados' : `${recurso.singular.charAt(0).toUpperCase()}${recurso.singular.slice(1)} creado`);
     } catch (error) {
       if (error.response?.status === 400) setErrores(error.response.data?.messages ?? {});

@@ -1,16 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Box, Button, CircularProgress, Dialog, Divider, Snackbar, TextField, Typography } from '@mui/material';
-import { CheckCircle, LockOutlined, PointOfSale, PrintOutlined } from '@mui/icons-material';
+import { Alert, Box, Button, CircularProgress, Dialog, Divider, Snackbar, Step, StepLabel, Stepper, TextField, Typography } from '@mui/material';
+import { ArrowBack, ArrowForward, CheckCircle, CreditCard, LockOutlined, PointOfSale, PrintOutlined, SavingsOutlined } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { mensajeDeError } from '../api/axiosClient';
+import { ROLES } from '../auth/roles';
 import { getSession } from '../auth/session';
 import IconTile from '../components/IconTile';
 import Panel from '../components/Panel';
+import { DENOMINACIONES } from '../data/catalogo';
 import { FONDO_SUGERIDO } from '../data/dummy';
-import { abrirCaja, cerrarCaja, corteDesdeApi, obtenerTurno, registrarMovimiento, resumenDesdeTurno } from '../services/corteService';
+import { abrirCaja, cerrarCaja, corteDesdeApi, obtenerCaja, obtenerTurno, registrarMovimiento, resumenDesdeTurno } from '../services/corteService';
 import { COLORS } from '../theme';
 import { formatMoney } from '../utils/format';
-import ConciliacionTarjeta from './corte/ConciliacionTarjeta';
 import ConteoEfectivo from './corte/ConteoEfectivo';
 import DesglosePagos from './corte/DesglosePagos';
 import { COLOR_METODO, estadoDiferencia, totalContado } from './corte/estilos';
@@ -21,34 +22,68 @@ import { descargarTicketCorte } from './corte/ticketCorte';
 import VentasDelDia from './corte/VentasDelDia';
 
 const GAP = { xs: 2, md: 3 };
+const PASOS = ['Turno', 'Conteo', 'Resultado'];
 
 const redondear = (valor) => Math.round(valor * 100) / 100;
 
 const Renglon = ({ label, value, color, fuerte }) => (
-  <Box sx={{ display: 'flex', justifyContent: 'space-between', py: 0.4, fontSize: fuerte ? '1rem' : '0.9rem', fontWeight: fuerte ? 800 : 500, color }}>
+  <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, py: 0.4, fontSize: fuerte ? '1rem' : '0.9rem', fontWeight: fuerte ? 800 : 500, color }}>
     <span>{label}</span>
-    <Box component="span" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+    <Box component="span" sx={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
       {value}
     </Box>
   </Box>
 );
 
-// Bloque del cuadre de una forma de pago dentro de la confirmación
-const BloqueCuadre = ({ titulo, color, esperadoLabel, esperado, realLabel, real, diferencia }) => {
-  const estado = estadoDiferencia(diferencia);
-  return (
-    <Box sx={{ p: 1.5, borderRadius: 3, border: `1px solid ${COLORS.border}`, borderLeft: `4px solid ${color}` }}>
-      <Typography sx={{ mb: 0.5, fontWeight: 700, color: COLORS.ink }}>{titulo}</Typography>
-      <Renglon label={esperadoLabel} value={formatMoney(esperado)} color={COLORS.label} />
-      <Renglon label={realLabel} value={formatMoney(real)} color={COLORS.label} />
-      <Renglon label={estado.label} value={`${diferencia > 0 ? '+' : ''}${formatMoney(diferencia)}`} color={estado.color} fuerte />
-    </Box>
-  );
+const Etiqueta = ({ htmlFor, children }) => (
+  <Typography component="label" htmlFor={htmlFor} sx={{ display: 'block', mb: 0.5, fontSize: '0.85rem', fontWeight: 700, color: COLORS.ink }}>
+    {children}
+  </Typography>
+);
+
+// Texto claro de una diferencia: "Te faltaron $50.00", "Te sobraron $20.00" o "Cuadra exacto"
+const textoDiferencia = (diferencia, { falta = 'Te faltaron', sobra = 'Te sobraron', cuadra = 'Cuadra exacto' } = {}) => {
+  if (Math.abs(diferencia) < 0.005) return cuadra;
+  return `${diferencia < 0 ? falta : sobra} ${formatMoney(Math.abs(diferencia))}`;
 };
 
-// Caja sin turno abierto: se puede abrir aquí mismo con el fondo inicial
-const CajaCerrada = ({ onAbierta }) => {
-  const [fondo, setFondo] = useState(FONDO_SUGERIDO);
+const botonPrincipalSx = {
+  minHeight: 56,
+  px: 3,
+  borderRadius: 3,
+  textTransform: 'none',
+  fontWeight: 800,
+  fontSize: '1rem',
+  backgroundColor: COLORS.red,
+  boxShadow: '0 6px 16px rgba(227, 36, 59, 0.3)',
+  '&:hover': { backgroundColor: COLORS.redHover },
+  '&.Mui-disabled': { backgroundColor: '#f3a3ad', color: COLORS.surface, boxShadow: 'none' },
+};
+const botonSecundarioSx = { minHeight: 56, px: 3, borderRadius: 3, textTransform: 'none', fontWeight: 700, color: COLORS.label, backgroundColor: COLORS.inputBg };
+
+// Resumen del conteo antes de confirmarlo: piezas por denominación, subtotales de billetes y monedas
+const ResumenConteo = ({ conteo }) =>
+  [
+    { titulo: 'Billetes', lista: DENOMINACIONES.billetes },
+    { titulo: 'Monedas', lista: DENOMINACIONES.monedas },
+  ].map(({ titulo, lista }) => {
+    const filas = lista.filter((valor) => (conteo[valor] ?? 0) > 0);
+    const subtotal = filas.reduce((suma, valor) => suma + valor * conteo[valor], 0);
+    return (
+      <Box key={titulo} sx={{ p: 1.25, borderRadius: 2.5, backgroundColor: COLORS.surfaceAlt }}>
+        <Renglon label={`${titulo} (${filas.reduce((s, v) => s + conteo[v], 0)} piezas)`} value={formatMoney(subtotal)} color={COLORS.ink} fuerte />
+        {filas.length ? (
+          filas.map((valor) => <Renglon key={valor} label={`${conteo[valor]} × ${formatMoney(valor)}`} value={formatMoney(valor * conteo[valor])} color={COLORS.label} />)
+        ) : (
+          <Typography sx={{ fontSize: '0.85rem', color: COLORS.muted }}>Sin {titulo.toLowerCase()}</Typography>
+        )}
+      </Box>
+    );
+  });
+
+// Caja sin turno abierto: se abre aquí mismo; se propone el fondo que se dejó en el último corte
+const CajaCerrada = ({ fondoSugerido, onAbierta }) => {
+  const [fondo, setFondo] = useState(fondoSugerido ?? FONDO_SUGERIDO);
   const [abriendo, setAbriendo] = useState(false);
   const [error, setError] = useState('');
 
@@ -87,19 +122,13 @@ const CajaCerrada = ({ onAbierta }) => {
 
       <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, alignItems: { sm: 'flex-end' }, gap: 1.5, mt: 3 }}>
         <Box sx={{ flex: 1, maxWidth: { sm: 320 } }}>
-          <Typography component="label" htmlFor="fondo-apertura" sx={{ display: 'block', mb: 0.5, fontSize: '0.82rem', fontWeight: 600, color: COLORS.ink }}>
-            Fondo inicial en gaveta
-          </Typography>
+          <Etiqueta htmlFor="fondo-apertura">Fondo inicial en gaveta</Etiqueta>
           <MontoInput id="fondo-apertura" value={fondo} onChange={setFondo} />
+          {fondoSugerido != null && (
+            <Typography sx={{ mt: 0.5, fontSize: '0.75rem', color: COLORS.muted }}>Es el fondo que se dejó en el último corte.</Typography>
+          )}
         </Box>
-        <Button
-          variant="contained"
-          disableElevation
-          startIcon={<PointOfSale />}
-          disabled={abriendo}
-          onClick={abrir}
-          sx={{ minHeight: 52, px: 3, borderRadius: 3, textTransform: 'none', fontWeight: 800, backgroundColor: COLORS.red, '&:hover': { backgroundColor: COLORS.redHover } }}
-        >
+        <Button variant="contained" disableElevation startIcon={<PointOfSale />} disabled={abriendo} onClick={abrir} sx={botonPrincipalSx}>
           {abriendo ? 'Abriendo caja…' : 'Abrir caja'}
         </Button>
       </Box>
@@ -112,23 +141,37 @@ const CajaCerrada = ({ onAbierta }) => {
   );
 };
 
+/**
+ * Corte de caja en 3 pasos:
+ *  1. Turno: movimientos y ventas del turno (el vendedor solo ve sus últimas ventas y no ve totales).
+ *  2. Conteo a ciegas: fondo que se deja para mañana, billetes y monedas, y total de la terminal de tarjeta.
+ *  3. Resultado: cuánto debía haber vs. lo contado (faltó / sobró / cuadra), cuánto se entrega y cierre Z.
+ */
 const CorteCaja = () => {
   const user = getSession();
+  const esVendedor = user?.id_rol === ROLES.CAJERO;
   const navigate = useNavigate();
   const [turno, setTurno] = useState(undefined); // undefined = cargando, null = caja cerrada
+  const [fondoSugerido, setFondoSugerido] = useState(null);
   const [errorCarga, setErrorCarga] = useState('');
+  const [paso, setPaso] = useState(0);
   const [conteo, setConteo] = useState({});
-  const [terminal, setTerminal] = useState({ monto: 0, vouchers: 0 });
+  const [fondoSiguiente, setFondoSiguiente] = useState(null); // null = aún no lo captura (se propone el fondo inicial)
+  const [terminal, setTerminal] = useState(0);
   const [observaciones, setObservaciones] = useState('');
-  const [confirmar, setConfirmar] = useState(false);
+  const [confirmarConteo, setConfirmarConteo] = useState(false);
   const [cerrando, setCerrando] = useState(false);
   const [corte, setCorte] = useState(null);
   const [aviso, setAviso] = useState('');
 
   useEffect(() => {
     let vigente = true;
-    obtenerTurno()
-      .then((t) => vigente && setTurno(t))
+    obtenerCaja()
+      .then((caja) => {
+        if (!vigente) return;
+        setTurno(caja.turno);
+        setFondoSugerido(caja.fondoSugerido);
+      })
       .catch((e) => vigente && setErrorCarga(mensajeDeError(e, 'No se pudo consultar la caja.')));
     return () => {
       vigente = false;
@@ -159,32 +202,17 @@ const CorteCaja = () => {
   }
 
   // Sin turno abierto (y sin un corte recién hecho que mostrar)
-  if (!resumen && !corte) return <CajaCerrada onAbierta={setTurno} />;
+  if (!resumen && !corte) return <CajaCerrada fondoSugerido={fondoSugerido} onAbierta={setTurno} />;
 
-  const transaccionesTarjeta = resumen?.porMetodo.find((m) => m.id === 'tarjeta')?.transacciones ?? 0;
+  // ----- Cálculos del cuadre (solo se muestran en el paso 3) -----
   const contado = totalContado(conteo);
+  const fondo = fondoSiguiente ?? Math.min(resumen?.fondo ?? 0, contado);
   const difEfectivo = redondear(contado - (resumen?.efectivoEsperado ?? 0));
-  const difTarjeta = redondear(terminal.monto - (resumen?.tarjeta ?? 0));
-  const tarjetaCapturada = terminal.monto > 0 || resumen?.tarjeta === 0;
-  const efectivoContado = contado > 0 || resumen?.efectivoEsperado === 0;
+  const difTarjeta = redondear(terminal - (resumen?.tarjeta ?? 0));
   const hayDiferencias = Math.abs(difEfectivo) >= 0.01 || Math.abs(difTarjeta) >= 0.01;
+  const fondoInvalido = fondo > contado;
   const faltaJustificar = hayDiferencias && !observaciones.trim();
-  const puedeCerrar = efectivoContado && tarjetaCapturada && !faltaJustificar;
 
-  const pendiente = !efectivoContado
-    ? 'Realiza el conteo físico del efectivo'
-    : !tarjetaCapturada
-      ? 'Captura el cierre de lote de la terminal bancaria'
-      : faltaJustificar
-        ? 'Hay diferencias: explica el motivo en observaciones'
-        : null;
-
-  const handlePrecorte = () => {
-    descargarTicketCorte({ tipo: 'X', resumen, conteo, terminal, observaciones, user });
-    setAviso('Pre-corte X guardado en PDF');
-  };
-
-  // Devuelve false si no se pudo registrar (el diálogo se queda abierto)
   const handleMovimiento = async (movimiento) => {
     try {
       setTurno(await registrarMovimiento(movimiento));
@@ -199,7 +227,9 @@ const CorteCaja = () => {
   const handleCerrar = async () => {
     setCerrando(true);
     try {
-      const cerrado = corteDesdeApi(await cerrarCaja({ conteo, terminal, observaciones: observaciones.trim() }));
+      const cerrado = corteDesdeApi(
+        await cerrarCaja({ conteo, fondoSiguiente: fondo, terminal: { monto: terminal, vouchers: null }, observaciones: observaciones.trim() })
+      );
       const ticket = {
         tipo: 'Z',
         folio: cerrado.id,
@@ -207,165 +237,247 @@ const CorteCaja = () => {
         resumen: cerrado.resumen,
         conteo: cerrado.efectivo.conteo,
         terminal: { monto: cerrado.tarjeta.terminal, vouchers: cerrado.tarjeta.vouchers },
+        fondoSiguiente: cerrado.efectivo.fondo_siguiente,
         observaciones: cerrado.observaciones,
         user: { nombre: cerrado.usuarioNombre },
       };
       descargarTicketCorte(ticket);
-      setConfirmar(false);
       setCorte({ ...cerrado, neto: cerrado.resumen.neto, ticket });
     } catch (error) {
-      setConfirmar(false);
       setAviso(mensajeDeError(error, 'No se pudo registrar el corte. Intenta de nuevo.'));
-      // Pudo cambiar algo (otra venta, otro cierre): se recarga el turno
+      // Pudo cambiar algo (otra venta, otro cierre): se recarga el turno y se repasa el resultado
       obtenerTurno().then(setTurno).catch(() => {});
     } finally {
       setCerrando(false);
     }
   };
 
+  const encabezado = (
+    <Panel sx={{ p: { xs: 2, md: 2.5 } }}>
+      <Stepper activeStep={paso} alternativeLabel>
+        {PASOS.map((p) => (
+          <Step key={p}>
+            <StepLabel>{p}</StepLabel>
+          </Step>
+        ))}
+      </Stepper>
+    </Panel>
+  );
+
   return (
     <Box sx={{ display: 'grid', gap: GAP }}>
-      <ResumenTurno resumen={resumen} user={user} />
+      {/* ---------- PASO 1 · TURNO ---------- */}
+      {paso === 0 && resumen && (
+        <>
+          {/* El vendedor no ve los totales del turno: así cuenta el efectivo sin saber cuánto "debería" haber */}
+          {!esVendedor && <ResumenTurno resumen={resumen} user={user} />}
+          <Box sx={{ display: 'grid', gap: GAP, alignItems: 'start', gridTemplateColumns: { xs: 'minmax(0, 1fr)', lg: 'minmax(0, 1fr) 420px' } }}>
+            <Box sx={{ display: 'grid', gap: GAP, minWidth: 0 }}>
+              {!esVendedor && <DesglosePagos resumen={resumen} />}
+              <MovimientosEfectivo resumen={resumen} onRegistrar={handleMovimiento} aCiegas={esVendedor} />
+              <VentasDelDia resumen={resumen} />
+            </Box>
 
-      <Box
-        sx={{
-          display: 'grid',
-          gap: GAP,
-          alignItems: 'start',
-          gridTemplateColumns: { xs: 'minmax(0, 1fr)', lg: 'minmax(0, 1fr) 420px', xl: 'minmax(0, 1fr) 480px' },
-        }}
-      >
-        {/* Columna principal */}
-        {/* Se estira al alto de la fila para que las ventas puedan acompañar el scroll */}
-        <Box sx={{ display: 'grid', gap: GAP, minWidth: 0, alignSelf: 'stretch', alignContent: 'start' }}>
-          <DesglosePagos resumen={resumen} />
-          <MovimientosEfectivo resumen={resumen} onRegistrar={handleMovimiento} />
-          <VentasDelDia resumen={resumen} sx={{ position: { lg: 'sticky' }, top: { lg: 16 }, zIndex: 1 }} />
-        </Box>
+            <Panel component="aside" sx={{ p: { xs: 2, md: 2.5 }, display: 'grid', gap: 1.5, position: { lg: 'sticky' }, top: { lg: 16 } }}>
+              <Typography component="h2" sx={{ fontWeight: 800, fontSize: '1.2rem', color: COLORS.ink }}>
+                Corte de caja
+              </Typography>
+              <Typography sx={{ fontSize: '0.88rem', color: COLORS.label }}>Al terminar el turno haz el corte en dos pasos:</Typography>
+              <Box component="ol" sx={{ m: 0, pl: 2.5, display: 'grid', gap: 0.75, fontSize: '0.88rem', color: COLORS.label }}>
+                <li>
+                  <strong>Conteo:</strong> decide cuánto efectivo dejas de fondo para mañana, cuenta billetes y monedas, y anota el total que marca la terminal de tarjeta.
+                </li>
+                <li>
+                  <strong>Resultado:</strong> el sistema compara lo que contaste con lo vendido y te dice si te faltó, te sobró o cuadra.
+                </li>
+              </Box>
+              <Button variant="contained" disableElevation endIcon={<ArrowForward />} onClick={() => setPaso(1)} sx={botonPrincipalSx}>
+                Iniciar corte de caja
+              </Button>
+              {!esVendedor && (
+                <Button
+                  startIcon={<PrintOutlined />}
+                  onClick={() => {
+                    descargarTicketCorte({ tipo: 'X', resumen, conteo: {}, terminal: { monto: 0 }, observaciones: '', user });
+                    setAviso('Pre-corte X guardado en PDF');
+                  }}
+                  sx={botonSecundarioSx}
+                >
+                  Imprimir pre-corte X (lectura parcial)
+                </Button>
+              )}
+            </Panel>
+          </Box>
+        </>
+      )}
 
-        {/* Cuadre y cierre */}
-        <Box component="aside" sx={{ display: 'grid', gap: GAP, minWidth: 0 }}>
-          <ConteoEfectivo conteo={conteo} onConteo={setConteo} esperado={resumen.efectivoEsperado} />
-          <ConciliacionTarjeta sistema={resumen.tarjeta} transacciones={transaccionesTarjeta} terminal={terminal} onTerminal={setTerminal} />
+      {/* ---------- PASO 2 · CONTEO (a ciegas) ---------- */}
+      {paso === 1 && (
+        <>
+          {encabezado}
+          <Box sx={{ display: 'grid', gap: GAP, alignItems: 'start', gridTemplateColumns: { xs: 'minmax(0, 1fr)', lg: 'minmax(0, 1fr) 420px' } }}>
+            <ConteoEfectivo conteo={conteo} onConteo={setConteo} />
 
-          <Panel sx={{ p: { xs: 2, md: 2.5 } }}>
-            <Typography component="label" htmlFor="observaciones-corte" sx={{ display: 'block', mb: 0.75, fontSize: '0.85rem', color: COLORS.ink }}>
-              Observaciones del cajero / supervisor {hayDiferencias ? '(obligatorio por diferencias)' : '(opcional)'}
-            </Typography>
-            <TextField
-              id="observaciones-corte"
-              fullWidth
-              multiline
-              minRows={2}
-              maxRows={4}
-              placeholder="Ej. Entregado sin novedad a supervisora, gaveta limpia y rollos de ticket repuestos…"
-              value={observaciones}
-              onChange={(e) => setObservaciones(e.target.value)}
-              error={faltaJustificar}
-              sx={{
-                '& .MuiOutlinedInput-root': {
-                  backgroundColor: COLORS.inputBg,
-                  borderRadius: 2,
-                  '& fieldset': { borderColor: 'transparent' },
-                  '&.Mui-focused fieldset': { borderColor: COLORS.blue },
-                },
-              }}
-            />
+            <Panel component="aside" sx={{ p: { xs: 2, md: 2.5 }, display: 'grid', gap: 2, position: { lg: 'sticky' }, top: { lg: 16 } }}>
+              <Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1, color: COLOR_METODO.efectivo.fuerte }}>
+                  <SavingsOutlined />
+                  <Typography sx={{ fontWeight: 800, color: COLORS.ink }}>Fondo para mañana</Typography>
+                </Box>
+                <Etiqueta htmlFor="fondo-siguiente">¿Cuánto efectivo dejas en la gaveta para el siguiente turno?</Etiqueta>
+                <MontoInput id="fondo-siguiente" value={fondo} onChange={setFondoSiguiente} />
+                <Typography sx={{ mt: 0.5, fontSize: '0.75rem', color: fondoInvalido ? COLORS.red : COLORS.muted }}>
+                  {fondoInvalido ? 'No puede ser mayor a lo que contaste.' : 'Sale del efectivo que cuentes; el resto se entrega a depósito.'}
+                </Typography>
+              </Box>
 
-            <Button
-              fullWidth
-              startIcon={<PrintOutlined />}
-              onClick={handlePrecorte}
-              sx={{
-                mt: 2,
-                minHeight: 52,
-                borderRadius: 3,
-                textTransform: 'none',
-                fontWeight: 700,
-                fontSize: '0.95rem',
-                color: COLORS.ink,
-                backgroundColor: COLORS.inputBg,
-                '&:hover': { backgroundColor: COLORS.hover },
-              }}
-            >
-              Imprimir pre-corte X (lectura parcial)
+              <Divider />
+
+              <Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1, color: COLOR_METODO.tarjeta.fuerte }}>
+                  <CreditCard />
+                  <Typography sx={{ fontWeight: 800, color: COLORS.ink }}>Terminal de tarjeta</Typography>
+                </Box>
+                <Etiqueta htmlFor="total-terminal">Total de ventas que indica la terminal (cierre de lote)</Etiqueta>
+                <MontoInput id="total-terminal" value={terminal} onChange={setTerminal} />
+                <Typography sx={{ mt: 0.5, fontSize: '0.75rem', color: COLORS.muted }}>Imprime el cierre de la terminal y captura el total. Si no hubo ventas con tarjeta, déjalo en $0.</Typography>
+              </Box>
+
+              <Box sx={{ p: 1.5, borderRadius: 2.5, backgroundColor: COLORS.greenSoft, color: COLORS.greenText }}>
+                <Renglon label="Efectivo contado" value={formatMoney(contado)} fuerte />
+                <Renglon label="Dejas de fondo" value={formatMoney(fondo)} />
+                <Renglon label="Entregas a depósito" value={formatMoney(Math.max(0, contado - fondo))} />
+              </Box>
+
+              <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 1 }}>
+                <Button startIcon={<ArrowBack />} onClick={() => setPaso(0)} sx={botonSecundarioSx}>
+                  Atrás
+                </Button>
+                <Button variant="contained" disableElevation endIcon={<ArrowForward />} disabled={fondoInvalido} onClick={() => setConfirmarConteo(true)} sx={botonPrincipalSx}>
+                  Siguiente
+                </Button>
+              </Box>
+            </Panel>
+          </Box>
+        </>
+      )}
+
+      {/* ---------- PASO 3 · RESULTADO Y CIERRE ---------- */}
+      {paso === 2 && resumen && (
+        <>
+          {encabezado}
+          <Panel sx={{ p: { xs: 2, md: 3 }, display: 'grid', gap: 2.5, maxWidth: 760, width: '100%', mx: 'auto' }}>
+            <Box sx={{ textAlign: 'center' }}>
+              <Typography sx={{ color: COLORS.label }}>Contaste en efectivo</Typography>
+              <Typography sx={{ fontWeight: 800, fontSize: '2.2rem', color: COLORS.ink, fontVariantNumeric: 'tabular-nums' }}>{formatMoney(contado)}</Typography>
+            </Box>
+
+            {/* Resultado principal: el efectivo */}
+            {(() => {
+              const estado = estadoDiferencia(difEfectivo);
+              return (
+                <Box sx={{ p: 2, borderRadius: 3, textAlign: 'center', backgroundColor: estado.bg, color: estado.color }}>
+                  <Typography sx={{ fontWeight: 800, fontSize: '1.5rem' }}>{textoDiferencia(difEfectivo)}</Typography>
+                  <Typography sx={{ fontSize: '0.85rem' }}>
+                    {Math.abs(difEfectivo) < 0.005 ? 'El efectivo de la gaveta coincide con lo que se vendió.' : 'Diferencia entre el efectivo contado y el que debía haber.'}
+                  </Typography>
+                </Box>
+              );
+            })()}
+
+            <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' } }}>
+              {/* Cómo se calcula el efectivo que debía haber */}
+              <Box sx={{ p: 1.5, borderRadius: 3, border: `1px solid ${COLORS.border}`, borderLeft: `4px solid ${COLOR_METODO.efectivo.barra}` }}>
+                <Typography sx={{ mb: 0.5, fontWeight: 700, color: COLORS.ink }}>Efectivo</Typography>
+                <Renglon label="Fondo con que abriste" value={formatMoney(resumen.fondo)} color={COLORS.label} />
+                <Renglon label="+ Ventas en efectivo" value={formatMoney(resumen.efectivo)} color={COLORS.label} />
+                {resumen.entradas > 0 && <Renglon label="+ Entradas de efectivo" value={formatMoney(resumen.entradas)} color={COLORS.label} />}
+                {resumen.retiros > 0 && <Renglon label="− Retiros de efectivo" value={formatMoney(resumen.retiros)} color={COLORS.label} />}
+                <Divider sx={{ my: 0.5 }} />
+                <Renglon label="Debías tener" value={formatMoney(resumen.efectivoEsperado)} color={COLORS.ink} fuerte />
+                <Renglon label="Contaste" value={formatMoney(contado)} color={COLORS.ink} />
+              </Box>
+
+              {/* Tarjeta: lo que registró el sistema vs. la terminal */}
+              <Box sx={{ p: 1.5, borderRadius: 3, border: `1px solid ${COLORS.border}`, borderLeft: `4px solid ${COLOR_METODO.tarjeta.barra}` }}>
+                <Typography sx={{ mb: 0.5, fontWeight: 700, color: COLORS.ink }}>Tarjeta</Typography>
+                <Renglon label="Ventas con tarjeta (sistema)" value={formatMoney(resumen.tarjeta)} color={COLORS.label} />
+                <Renglon label="Total de la terminal" value={formatMoney(terminal)} color={COLORS.label} />
+                <Divider sx={{ my: 0.5 }} />
+                <Renglon
+                  label={Math.abs(difTarjeta) < 0.005 ? 'Coincide' : difTarjeta < 0 ? 'La terminal marca menos' : 'La terminal marca más'}
+                  value={Math.abs(difTarjeta) < 0.005 ? '✓' : formatMoney(Math.abs(difTarjeta))}
+                  color={estadoDiferencia(difTarjeta).color}
+                  fuerte
+                />
+              </Box>
+            </Box>
+
+            {/* Total del turno y entrega */}
+            <Box sx={{ p: 1.5, borderRadius: 3, backgroundColor: COLORS.surfaceAlt }}>
+              <Renglon label="Ventas del turno" value={formatMoney(resumen.neto)} color={COLORS.ink} fuerte />
+              <Renglon label={`Efectivo ${formatMoney(resumen.efectivo)} + Tarjeta ${formatMoney(resumen.tarjeta)}`} value="" color={COLORS.muted} />
+              <Divider sx={{ my: 0.5 }} />
+              <Renglon label="Se queda en gaveta (fondo para mañana)" value={formatMoney(fondo)} color={COLORS.label} />
+              <Renglon label="Entregas a depósito" value={formatMoney(contado - fondo)} color={COLORS.ink} fuerte />
+            </Box>
+
+            <Box>
+              <Etiqueta htmlFor="observaciones-corte">Observaciones {hayDiferencias ? '(obligatorio: explica la diferencia)' : '(opcional)'}</Etiqueta>
+              <TextField
+                id="observaciones-corte"
+                fullWidth
+                multiline
+                minRows={2}
+                maxRows={4}
+                placeholder="Ej. Se dio cambio de más en una venta; gaveta entregada a la supervisora…"
+                value={observaciones}
+                onChange={(e) => setObservaciones(e.target.value)}
+                error={faltaJustificar}
+                sx={{ '& .MuiOutlinedInput-root': { backgroundColor: COLORS.inputBg, borderRadius: 2, '& fieldset': { borderColor: 'transparent' } } }}
+              />
+            </Box>
+
+            {/* El conteo ya se confirmó: no se puede regresar a modificarlo */}
+            <Button variant="contained" disableElevation startIcon={<LockOutlined />} disabled={cerrando || faltaJustificar} onClick={handleCerrar} sx={botonPrincipalSx}>
+              {cerrando ? 'Cerrando…' : 'Cerrar turno e imprimir corte Z'}
             </Button>
-            <Button
-              fullWidth
-              variant="contained"
-              disableElevation
-              disabled={!puedeCerrar}
-              startIcon={<LockOutlined />}
-              onClick={() => setConfirmar(true)}
-              sx={{
-                mt: 1.25,
-                minHeight: 60,
-                borderRadius: 3,
-                fontWeight: 800,
-                fontSize: '1rem',
-                textTransform: 'none',
-                backgroundColor: COLORS.red,
-                boxShadow: '0 6px 16px rgba(227, 36, 59, 0.3)',
-                '&:hover': { backgroundColor: COLORS.redHover },
-                '&.Mui-disabled': { backgroundColor: '#f3a3ad', color: COLORS.surface, boxShadow: 'none' },
-              }}
-            >
-              Cerrar turno e imprimir corte Z
-            </Button>
-            {pendiente && (
-              <Typography sx={{ mt: 1, textAlign: 'center', fontSize: '0.8rem', color: COLORS.muted }}>{pendiente}</Typography>
-            )}
           </Panel>
-        </Box>
-      </Box>
+        </>
+      )}
 
-      {/* CONFIRMACIÓN DE CIERRE */}
-      <Dialog open={confirmar} onClose={() => !cerrando && setConfirmar(false)} fullWidth maxWidth="xs" slotProps={{ paper: { sx: { borderRadius: 4 } } }}>
+      {/* CONFIRMACIÓN DEL CONTEO: al confirmar ya no se puede regresar a modificarlo */}
+      <Dialog open={confirmarConteo} onClose={() => setConfirmarConteo(false)} fullWidth maxWidth="xs" slotProps={{ paper: { sx: { borderRadius: 4 } } }}>
         <Box sx={{ p: 3, display: 'grid', gap: 1.5 }}>
           <Box>
             <Typography component="h2" sx={{ fontWeight: 800, fontSize: '1.3rem', color: COLORS.ink }}>
-              ¿Cerrar el turno?
+              Confirma tu conteo
             </Typography>
-            <Typography sx={{ fontSize: '0.85rem', color: COLORS.muted }}>
-              Se registrará el corte Z y ya no podrás modificar el conteo.
-            </Typography>
+            <Typography sx={{ fontSize: '0.85rem', color: COLORS.muted }}>Revisa que coincida con lo que tienes en la gaveta.</Typography>
           </Box>
-          <BloqueCuadre
-            titulo="Efectivo"
-            color={COLOR_METODO.efectivo.barra}
-            esperadoLabel="Esperado en gaveta"
-            esperado={resumen.efectivoEsperado}
-            realLabel="Contado"
-            real={contado}
-            diferencia={difEfectivo}
-          />
-          <BloqueCuadre
-            titulo="Tarjeta"
-            color={COLOR_METODO.tarjeta.barra}
-            esperadoLabel="Cobrado en sistema"
-            esperado={resumen.tarjeta}
-            realLabel="Cierre de terminal"
-            real={terminal.monto}
-            diferencia={difTarjeta}
-          />
-          <Divider />
-          <Renglon label="Ventas netas del turno" value={formatMoney(resumen.neto)} color={COLORS.ink} fuerte />
-          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, mt: 0.5 }}>
-            <Button
-              disabled={cerrando}
-              onClick={() => setConfirmar(false)}
-              sx={{ minHeight: 52, borderRadius: 2.5, textTransform: 'none', fontWeight: 600, color: COLORS.label, backgroundColor: COLORS.inputBg }}
-            >
-              Revisar
+          <ResumenConteo conteo={conteo} />
+          <Box sx={{ px: 1.25 }}>
+            <Renglon label="Total de efectivo contado" value={formatMoney(contado)} color={COLOR_METODO.efectivo.fuerte} fuerte />
+            <Renglon label="Dejas de fondo para mañana" value={formatMoney(fondo)} color={COLORS.label} />
+            <Renglon label="Total de la terminal de tarjeta" value={formatMoney(terminal)} color={COLOR_METODO.tarjeta.fuerte} />
+          </Box>
+          <Alert severity="warning" sx={{ borderRadius: 2 }}>
+            Al confirmar ya no podrás regresar a modificar el conteo.
+          </Alert>
+          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
+            <Button onClick={() => setConfirmarConteo(false)} sx={{ ...botonSecundarioSx, minHeight: 52 }}>
+              Revisar conteo
             </Button>
             <Button
               variant="contained"
               disableElevation
-              disabled={cerrando}
-              onClick={handleCerrar}
-              sx={{ minHeight: 52, borderRadius: 2.5, textTransform: 'none', fontWeight: 700, backgroundColor: COLORS.red, '&:hover': { backgroundColor: COLORS.redHover } }}
+              onClick={() => {
+                setConfirmarConteo(false);
+                setPaso(2);
+              }}
+              sx={{ ...botonPrincipalSx, minHeight: 52 }}
             >
-              {cerrando ? 'Cerrando…' : 'Cerrar turno'}
+              Confirmar
             </Button>
           </Box>
         </Box>
@@ -381,26 +493,18 @@ const CorteCaja = () => {
             </Typography>
             <Typography sx={{ color: COLORS.muted }}>Corte Z #{corte.id} registrado</Typography>
             <Box sx={{ mt: 2, textAlign: 'left' }}>
-              <Renglon label="Efectivo entregado" value={formatMoney(corte.efectivo.contado)} color={COLOR_METODO.efectivo.fuerte} />
+              <Renglon label="Efectivo contado" value={formatMoney(corte.efectivo.contado)} color={COLOR_METODO.efectivo.fuerte} />
+              <Renglon label="Fondo para mañana" value={formatMoney(corte.efectivo.fondo_siguiente ?? 0)} color={COLORS.label} />
+              <Renglon label="Entregado a depósito" value={formatMoney(corte.efectivo.contado - (corte.efectivo.fondo_siguiente ?? 0))} color={COLORS.label} />
               <Renglon label="Tarjeta (terminal)" value={formatMoney(corte.tarjeta.terminal)} color={COLOR_METODO.tarjeta.fuerte} />
               <Divider sx={{ my: 0.5 }} />
-              <Renglon label="Ventas netas" value={formatMoney(corte.neto)} color={COLORS.ink} fuerte />
+              <Renglon label={textoDiferencia(corte.efectivo.diferencia, { falta: 'Faltante', sobra: 'Sobrante', cuadra: 'Efectivo cuadrado' })} value="" color={estadoDiferencia(corte.efectivo.diferencia).color} fuerte />
             </Box>
             <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, mt: 2.5 }}>
-              <Button
-                startIcon={<PrintOutlined />}
-                onClick={() => descargarTicketCorte(corte.ticket)}
-                sx={{ minHeight: 52, borderRadius: 2.5, textTransform: 'none', fontWeight: 600, color: COLORS.label, backgroundColor: COLORS.inputBg }}
-              >
+              <Button startIcon={<PrintOutlined />} onClick={() => descargarTicketCorte(corte.ticket)} sx={{ ...botonSecundarioSx, minHeight: 52 }}>
                 Reimprimir
               </Button>
-              <Button
-                autoFocus
-                variant="contained"
-                disableElevation
-                onClick={() => navigate('/inicio')}
-                sx={{ minHeight: 52, borderRadius: 2.5, textTransform: 'none', fontWeight: 700 }}
-              >
+              <Button autoFocus variant="contained" disableElevation onClick={() => navigate('/inicio')} sx={{ minHeight: 52, borderRadius: 2.5, textTransform: 'none', fontWeight: 700 }}>
                 Ir a inicio
               </Button>
             </Box>
@@ -408,13 +512,7 @@ const CorteCaja = () => {
         )}
       </Dialog>
 
-      <Snackbar
-        open={Boolean(aviso)}
-        autoHideDuration={2500}
-        onClose={() => setAviso('')}
-        message={aviso}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      />
+      <Snackbar open={Boolean(aviso)} autoHideDuration={2500} onClose={() => setAviso('')} message={aviso} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} />
     </Box>
   );
 };

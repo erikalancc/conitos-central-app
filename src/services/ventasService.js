@@ -89,9 +89,10 @@ export const obtenerResumenVentas = async ({ desde, hasta } = {}) => {
 };
 
 // GET /ventas?fecha=AAAA-MM-DD — ventas del día con su detalle
+// visibles: null = todas; número = el vendedor solo recibe sus últimas N ventas (y solo de hoy)
 export const obtenerVentasDelDia = async (fecha) => {
   const { data } = await axiosClient.get('/ventas', { params: { fecha } });
-  return data.data.ventas;
+  return { ventas: data.data.ventas, visibles: data.data.ventas_visibles ?? null };
 };
 
 // Forma de pago del POS a partir del nombre en metodos_pago (Débito y Crédito cuentan como tarjeta)

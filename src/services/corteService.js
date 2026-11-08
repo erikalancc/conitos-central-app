@@ -1,6 +1,6 @@
 import axiosClient from '../api/axiosClient';
 import { METODOS_PAGO } from '../data/catalogo';
-import { ventaDesdeApi } from './ventasService';
+import { metodoDesdeNombre, ventaDesdeApi } from './ventasService';
 
 // Caja: turnos (apertura con fondo → movimientos → corte Z) guardados en el API
 
@@ -57,13 +57,37 @@ export const resumenDesdeTurno = (turno) => {
   const ventas = (turno.ventas_detalle ?? []).map(ventaDesdeApi);
   // Las ventas cobradas antes de abrir caja se suman al turno: "desde" es lo más temprano
   const desde = [turno.apertura.fecha, ...ventas.map((v) => v.fecha)].reduce((a, b) => (new Date(b) < new Date(a) ? b : a));
-  return construirResumen({
+  const base = construirResumen({
     ventas,
     movimientos: turno.movimientos,
     apertura: { monto: turno.apertura.fondo, fecha: turno.apertura.fecha, comentario: turno.apertura.comentario, usuario: turno.apertura.usuario },
     fondo: turno.apertura.fondo,
     desde,
   });
+
+  // Los totales salen del API: el vendedor solo recibe sus últimas ventas, pero los totales son del turno completo
+  const t = turno.ventas;
+  const delMetodo = (id) => t.por_metodo.filter((m) => metodoDesdeNombre(m.nombre) === id);
+  const porMetodo = base.porMetodo.map((m) => {
+    const total = redondear(delMetodo(m.id).reduce((s, x) => s + x.total, 0));
+    return { ...m, total, transacciones: delMetodo(m.id).reduce((s, x) => s + x.tickets, 0), porcentaje: t.ventas_netas ? (total / t.ventas_netas) * 100 : 0 };
+  });
+  return {
+    ...base,
+    porMetodo,
+    tickets: t.tickets,
+    bruto: t.ventas_brutas,
+    descuentos: t.descuentos,
+    neto: t.ventas_netas,
+    ticketPromedio: t.tickets ? t.ventas_netas / t.tickets : 0,
+    efectivo: t.ventas_efectivo,
+    tarjeta: t.ventas_tarjeta,
+    entradas: turno.efectivo.entradas,
+    retiros: turno.efectivo.retiros,
+    efectivoEsperado: turno.efectivo.esperado,
+    // null = lista completa; número = solo se muestran las últimas N ventas (vendedor)
+    visibles: turno.ventas_visibles ?? null,
+  };
 };
 
 // Corte cerrado del API -> forma que usan el cuadre del historial y el ticket
@@ -96,9 +120,12 @@ export const corteDesdeApi = (corte) => ({
 });
 
 // GET /caja/turno — turno abierto con totales en vivo y sus ventas, o null si la caja está cerrada
-export const obtenerTurno = async () => {
+export const obtenerTurno = async () => (await obtenerCaja()).turno;
+
+// GET /caja/turno — { turno, fondoSugerido } (fondo que se dejó en el último corte, para proponerlo al abrir)
+export const obtenerCaja = async () => {
   const { data } = await axiosClient.get('/caja/turno');
-  return data.data.turno;
+  return { turno: data.data.turno, fondoSugerido: data.data.fondo_sugerido ?? null };
 };
 
 // POST /caja/apertura — abre el turno; las ventas de hoy sin turno se le asignan
@@ -114,9 +141,10 @@ export const registrarMovimiento = async ({ tipo, monto, concepto }) => {
 };
 
 // POST /caja/cierre — corte Z; el API calcula esperado y diferencias
-export const cerrarCaja = async ({ conteo, terminal, observaciones }) => {
+export const cerrarCaja = async ({ conteo, fondoSiguiente, terminal, observaciones }) => {
   const { data } = await axiosClient.post('/caja/cierre', {
     conteo: Object.fromEntries(Object.entries(conteo).filter(([, piezas]) => piezas > 0)),
+    fondo_siguiente: fondoSiguiente,
     tarjeta_terminal: terminal.monto,
     vouchers: terminal.vouchers || null,
     observaciones,

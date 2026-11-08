@@ -7,7 +7,6 @@ import {
   Chip,
   Dialog,
   IconButton,
-  InputAdornment,
   TextField,
   Typography,
   useMediaQuery,
@@ -15,12 +14,13 @@ import {
 import { AcUnit, ArrowForward, BadgeOutlined, Close, DeviceThermostat, FactCheckOutlined } from '@mui/icons-material';
 import { mensajeDeError } from '../../api/axiosClient';
 import { TURNO } from '../../data/dummy';
+import CampoTemperatura from '../../components/CampoTemperatura';
 import { guardarChecklist, omitirChecklist } from '../../services/checklistService';
 import { COLORS } from '../../theme';
 
 // items vienen de GET /checklist/apertura. Según tipo_campo, además del check se captura:
 //   SELECT -> una opción de config.opciones ({ valor, texto, nivel: ok|aviso|error })
-//   TEMPERATURE_PAIR -> una lectura por sensor de config.sensores ({ clave, nombre, min, max })
+//   TEMPERATURE_PAIR -> una lectura por equipo de la sucursal en config.sensores ({ clave, id_equipo, nombre, tipo, min, max })
 //   TEXT -> texto libre
 const estadoInicial = (items) => ({
   items: Object.fromEntries(items.map((item) => [item.id, false])),
@@ -46,7 +46,8 @@ const CHIP_COLORES = {
   pendiente: { bg: COLORS.inputBg, color: COLORS.muted },
 };
 
-const fueraDeRango = (valor, { min, max }) => valor !== '' && (Number(valor) < min || Number(valor) > max);
+// Rango de lo más bajo a lo más alto, aunque mínima y máxima se hayan capturado al revés
+const fueraDeRango = (valor, { min, max }) => valor !== '' && !Number.isNaN(Number(valor)) && (Number(valor) < Math.min(min, max) || Number(valor) > Math.max(min, max));
 
 const temperaturaFueraDeRango = (item, form) => sensores(item).some((s) => fueraDeRango(form.temperaturas[item.id][s.clave], s));
 
@@ -92,40 +93,43 @@ const ItemChip = ({ label, tipo }) => (
   />
 );
 
+// Lectura de un congelador/refrigerador de la sucursal: nombre y rango arriba, campo que acepta negativos (botón ±)
 const TemperaturaInput = ({ id, label, icon, value, onChange, rango, error }) => {
   const fuera = fueraDeRango(value, rango);
   return (
-    <TextField
-      id={id}
-      type="number"
-      value={value}
-      onChange={onChange}
-      error={Boolean(error) || fuera}
-      helperText={error || (fuera ? `Fuera de rango (${rango.min} a ${rango.max} °C)` : ' ')}
-      placeholder="0.0"
-      sx={{
-        '& .MuiOutlinedInput-root': { backgroundColor: COLORS.surface, borderRadius: 2, fontSize: '1rem', fontWeight: 700 },
-        '& .MuiFormHelperText-root': { mx: 0.5 },
-      }}
-      slotProps={{
-        htmlInput: { step: 0.1, inputMode: 'decimal', 'aria-label': label },
-        input: {
-          startAdornment: (
-            <InputAdornment position="start" sx={{ gap: 1, color: COLORS.blue }}>
-              {icon}
-              <Typography component="span" sx={{ color: COLORS.muted, fontSize: '0.92rem' }}>
-                {label}:
-              </Typography>
-            </InputAdornment>
-          ),
-          endAdornment: <InputAdornment position="end">°C</InputAdornment>,
-        },
-      }}
-    />
+    <Box>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.5, color: COLORS.blue }}>
+        {icon}
+        <Typography component="label" htmlFor={id} sx={{ flex: 1, minWidth: 0, fontSize: '0.88rem', fontWeight: 700, color: COLORS.ink }}>
+          {label}
+        </Typography>
+        <Typography sx={{ fontSize: '0.75rem', fontWeight: 600, color: COLORS.muted, whiteSpace: 'nowrap' }}>
+          {rango.min} a {rango.max} °C
+        </Typography>
+      </Box>
+      <CampoTemperatura
+        id={id}
+        fullWidth
+        value={value}
+        onChange={onChange}
+        error={Boolean(error) || fuera}
+        helperText={error || (fuera ? `Fuera de rango (${rango.min} a ${rango.max} °C)` : ' ')}
+        placeholder={rango.max <= 0 ? '-18.0' : '4.0'}
+        sx={{
+          '& .MuiOutlinedInput-root': { backgroundColor: COLORS.surface, borderRadius: 2, fontSize: '1rem', fontWeight: 700 },
+          '& .MuiFormHelperText-root': { mx: 0.5 },
+        }}
+        slotProps={{ htmlInput: { 'aria-label': `Temperatura de ${label}` } }}
+      />
+    </Box>
   );
 };
 
-const ChecklistApertura = ({ open, items, user, onClose, onSaved }) => {
+/**
+ * obligatorio (Vendedor / Cajero): sin botón de cerrar ni "Omitir"; solo se cierra al guardarlo.
+ * sucursal: { id, nombre } de la que salen los congeladores y refrigeradores.
+ */
+const ChecklistApertura = ({ open, items, user, sucursal, obligatorio = false, onClose, onSaved }) => {
   const fullScreen = useMediaQuery((theme) => theme.breakpoints.down('sm'));
   const [form, setForm] = useState(() => estadoInicial(items));
   const [intentado, setIntentado] = useState(false);
@@ -135,8 +139,9 @@ const ChecklistApertura = ({ open, items, user, onClose, onSaved }) => {
   const errores = intentado ? validar(form, items) : {};
   const setComentarios = (e) => setForm((prev) => ({ ...prev, comentarios: e.target.value }));
   const setValor = (id) => (e) => setForm((prev) => ({ ...prev, valores: { ...prev.valores, [id]: e.target.value } }));
-  const setTemperatura = (id, clave) => (e) =>
-    setForm((prev) => ({ ...prev, temperaturas: { ...prev.temperaturas, [id]: { ...prev.temperaturas[id], [clave]: e.target.value } } }));
+  // CampoTemperatura entrega el texto ya limpio (admite "-")
+  const setTemperatura = (id, clave) => (valor) =>
+    setForm((prev) => ({ ...prev, temperaturas: { ...prev.temperaturas, [id]: { ...prev.temperaturas[id], [clave]: valor } } }));
   const toggleItem = (id) => setForm((prev) => ({ ...prev, items: { ...prev.items, [id]: !prev.items[id] } }));
 
   const chipDeItem = (item) => {
@@ -238,13 +243,15 @@ const ChecklistApertura = ({ open, items, user, onClose, onSaved }) => {
             Control diario de calidad y preparación • Turno {TURNO.nombre}
           </Typography>
         </Box>
-        <IconButton
-          aria-label="Cerrar checklist"
-          onClick={onClose}
-          sx={{ width: 48, height: 48, flexShrink: 0, color: COLORS.surface, backgroundColor: 'rgba(0, 0, 0, 0.15)', '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.25)' } }}
-        >
-          <Close />
-        </IconButton>
+        {!obligatorio && (
+          <IconButton
+            aria-label="Cerrar checklist"
+            onClick={onClose}
+            sx={{ width: 48, height: 48, flexShrink: 0, color: COLORS.surface, backgroundColor: 'rgba(0, 0, 0, 0.15)', '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.25)' } }}
+          >
+            <Close />
+          </IconButton>
+        )}
       </Box>
 
       {/* CONTENIDO */}
@@ -332,12 +339,23 @@ const ChecklistApertura = ({ open, items, user, onClose, onSaved }) => {
                     ml: { xs: 0, sm: 6.5 },
                   }}
                 >
-                  {sensores(item).map((sensor, i) => (
+                  {/* Equipos de la sucursal (Administración → Sucursales) */}
+                  {sucursal && (
+                    <Typography sx={{ gridColumn: '1 / -1', mb: 1, fontSize: '0.78rem', fontWeight: 600, color: COLORS.blueText }}>
+                      Equipos de {sucursal.nombre} ({sensores(item).length})
+                    </Typography>
+                  )}
+                  {!sensores(item).length && (
+                    <Typography sx={{ gridColumn: '1 / -1', fontSize: '0.85rem', color: COLORS.muted }}>
+                      Esta sucursal no tiene congeladores ni refrigeradores dados de alta. Un administrador puede agregarlos en Administración → Sucursales.
+                    </Typography>
+                  )}
+                  {sensores(item).map((sensor) => (
                     <TemperaturaInput
                       key={sensor.clave}
                       id={`temp-${item.id}-${sensor.clave}`}
                       label={sensor.nombre}
-                      icon={i === 0 ? <AcUnit fontSize="small" /> : <DeviceThermostat fontSize="small" />}
+                      icon={sensor.tipo === 'refrigerador' ? <DeviceThermostat fontSize="small" /> : <AcUnit fontSize="small" />}
                       value={form.temperaturas[item.id][sensor.clave]}
                       onChange={setTemperatura(item.id, sensor.clave)}
                       rango={sensor}
@@ -425,13 +443,19 @@ const ChecklistApertura = ({ open, items, user, onClose, onSaved }) => {
           </Alert>
         )}
         <Box sx={{ display: 'flex', flexDirection: { xs: 'column-reverse', sm: 'row' }, alignItems: 'center', gap: 1.5 }}>
-          <Button
-            onClick={handleOmitir}
-            disabled={guardando}
-            sx={{ minHeight: 48, mr: { sm: 'auto' }, textTransform: 'none', fontWeight: 500, color: COLORS.label }}
-          >
-            Omitir por ahora (Requerirá autorización)
-          </Button>
+          {obligatorio ? (
+            <Typography sx={{ mr: { sm: 'auto' }, fontSize: '0.8rem', color: COLORS.muted, textAlign: { xs: 'center', sm: 'left' } }}>
+              Es obligatorio al iniciar el día: guárdalo para continuar.
+            </Typography>
+          ) : (
+            <Button
+              onClick={handleOmitir}
+              disabled={guardando}
+              sx={{ minHeight: 48, mr: { sm: 'auto' }, textTransform: 'none', fontWeight: 500, color: COLORS.label }}
+            >
+              Omitir por ahora (Requerirá autorización)
+            </Button>
+          )}
           <Button
             type="submit"
             variant="contained"

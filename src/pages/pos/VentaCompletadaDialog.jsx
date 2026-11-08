@@ -48,7 +48,15 @@ const VentaCompletadaDialog = ({ venta, onImprimir, onNuevaVenta }) => (
     {venta && (
       <Box sx={{ p: 3, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
         <Box sx={{ textAlign: 'center' }}>
-          <CheckCircle sx={{ fontSize: 56, color: COLORS.greenText }} />
+          {/* Con cambio: el monto va arriba en lugar de la palomita. Sin cambio (tarjeta o pago exacto): palomita verde */}
+          {venta.cambio > 0 ? (
+            <Box sx={{ p: 1.5, borderRadius: 3, backgroundColor: COLORS.greenSoft }}>
+              <Typography sx={{ fontSize: '0.85rem', fontWeight: 600, color: COLORS.greenText }}>CAMBIO A ENTREGAR</Typography>
+              <Typography sx={{ fontWeight: 800, fontSize: '2.2rem', color: COLORS.greenText, lineHeight: 1.1 }}>{formatMoney(venta.cambio)}</Typography>
+            </Box>
+          ) : (
+            <CheckCircle sx={{ fontSize: 56, color: COLORS.greenText }} />
+          )}
           <Typography component="h2" sx={{ mt: 0.5, fontWeight: 800, fontSize: '1.4rem', color: COLORS.ink }}>
             Venta completada
           </Typography>
@@ -56,24 +64,18 @@ const VentaCompletadaDialog = ({ venta, onImprimir, onNuevaVenta }) => (
             Orden #{venta.folio} · {venta.servicio === 'aqui' ? 'Para comer aquí' : 'Para llevar'}
             {venta.cliente && ` · ${venta.cliente}`}
           </Typography>
-
-          {venta.cambio > 0 && (
-            <Box sx={{ mt: 2, p: 1.5, borderRadius: 3, backgroundColor: COLORS.greenSoft }}>
-              <Typography sx={{ fontSize: '0.85rem', fontWeight: 600, color: COLORS.greenText }}>CAMBIO A ENTREGAR</Typography>
-              <Typography sx={{ fontWeight: 800, fontSize: '2.2rem', color: COLORS.greenText, lineHeight: 1.1 }}>{formatMoney(venta.cambio)}</Typography>
-            </Box>
-          )}
         </Box>
 
         {/* DETALLE DE LO VENDIDO */}
         <Typography sx={{ mt: 2, mb: 0.5, fontSize: '0.72rem', fontWeight: 700, letterSpacing: 0.6, color: COLORS.muted }}>
           DETALLE · {venta.totales.articulos} ARTÍCULO{venta.totales.articulos === 1 ? '' : 'S'}
         </Typography>
+        {/* Ocupa ~50 % del modal; en pantallas bajas se encoge (mín. 120 px) y hace scroll */}
         <Box
           sx={{
-            flex: 1,
-            minHeight: 80,
-            maxHeight: 260,
+            flex: '1 1 auto',
+            height: '42dvh',
+            minHeight: 120,
             overflowY: 'auto',
             px: 1.5,
             borderRadius: 3,
@@ -98,8 +100,17 @@ const VentaCompletadaDialog = ({ venta, onImprimir, onNuevaVenta }) => (
               />
             </>
           )}
-          <Renglon label="Método" value={venta.metodoPago ?? METODOS_PAGO.find((m) => m.id === venta.metodo)?.label} />
-          {venta.metodo === 'efectivo' && <Renglon label="Recibido" value={formatMoney(venta.recibido)} />}
+          {/* Método y recibido en el mismo renglón; método solo como Efectivo / Tarjeta (sin débito/crédito) */}
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, py: 0.5, fontSize: '0.92rem', fontWeight: 500 }}>
+            <span>
+              Método: <strong>{METODOS_PAGO.find((m) => m.id === venta.metodo)?.label ?? venta.metodoPago}</strong>
+            </span>
+            {venta.metodo === 'efectivo' && (
+              <span>
+                Recibido: <strong>{formatMoney(venta.recibido)}</strong>
+              </span>
+            )}
+          </Box>
           <Divider sx={{ my: 0.5 }} />
           <Renglon label="Total cobrado" value={formatMoney(venta.totales.total)} fuerte color={COLORS.ink} />
         </Box>

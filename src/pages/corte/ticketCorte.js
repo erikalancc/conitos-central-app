@@ -139,6 +139,10 @@ const componer = (doc, datos, dibujar) => {
   par('Esperado en gaveta', formatMoney(resumen.efectivoEsperado), { bold: true });
   par('Contado', formatMoney(contado));
   par(`Diferencia (${estadoDiferencia(difEfectivo).label})`, conSigno(difEfectivo), { bold: true });
+  if (datos.fondoSiguiente != null) {
+    par('Fondo para el siguiente turno', formatMoney(datos.fondoSiguiente));
+    par('Entregado a depósito', formatMoney(contado - datos.fondoSiguiente), { bold: true });
+  }
   separador();
 
   const difTarjeta = Math.round((terminal.monto - resumen.tarjeta) * 100) / 100;

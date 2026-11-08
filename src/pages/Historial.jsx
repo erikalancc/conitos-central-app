@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Accordion, AccordionDetails, AccordionSummary, Alert, Box, Button, Chip, CircularProgress, Typography } from '@mui/material';
 import { ChevronRight, ExpandMore, HistoryOutlined } from '@mui/icons-material';
-import { useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { mensajeDeError } from '../api/axiosClient';
+import { ROLES } from '../auth/roles';
+import { getSession } from '../auth/session';
 import IconTile from '../components/IconTile';
 import Panel from '../components/Panel';
 import { claveDia, corteDesdeApi, obtenerCortes } from '../services/corteService';
@@ -106,7 +108,7 @@ const DiaFila = ({ dia, esHoy, onVer }) => (
   </Box>
 );
 
-const Historial = () => {
+const HistorialSemanas = () => {
   const navigate = useNavigate();
   const [semanasPedidas, setSemanasPedidas] = useState(SEMANAS_POR_BLOQUE);
   const [diasApi, setDiasApi] = useState(null);
@@ -246,5 +248,12 @@ const Historial = () => {
     </Box>
   );
 };
+
+// El Vendedor / Cajero no ve el resumen por semanas: solo las últimas ventas del día de hoy
+const AHoy = () => {
+  const [ruta] = useState(() => `/historial/${claveDia(new Date())}`);
+  return <Navigate to={ruta} replace />;
+};
+const Historial = () => (getSession()?.id_rol === ROLES.CAJERO ? <AHoy /> : <HistorialSemanas />);
 
 export default Historial;

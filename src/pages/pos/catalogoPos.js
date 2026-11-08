@@ -1,4 +1,5 @@
 // Convierte el catálogo del API (GET /catalogo) en lo que pinta y vende el POS.
+import { urlImagen } from '../../utils/imagen';
 
 const FONDO_DEFAULT = 'linear-gradient(135deg, #eef1f5, #dde3ea)';
 
@@ -55,7 +56,7 @@ export const adaptarCatalogo = (api, { vendidos = {}, hoy = new Date() } = {}) =
     }));
     // Sabores que se pueden elegir: los del tipo que indica el producto
     const sabores = p.requiere_sabor
-      ? api.sabores.filter((s) => s.tipo === p.tipo_sabor).map((s) => ({ id: s.id, nombre: s.nombre, especial: s.es_especial }))
+      ? api.sabores.filter((s) => s.tipos.includes(p.tipo_sabor)).map((s) => ({ id: s.id, nombre: s.nombre, especial: s.es_especial }))
       : [];
     const extras = p.extras.map((id) => extrasPorId[id]).filter(Boolean);
     const personalizable = presentaciones.length > 1 || p.requiere_sabor || extras.length > 0;
@@ -64,6 +65,8 @@ export const adaptarCatalogo = (api, { vendidos = {}, hoy = new Date() } = {}) =
       id: p.id,
       categoria: p.id_categoria,
       nombre: p.nombre,
+      // Imagen subida en Administración; si no hay, se usa el emoji
+      imagen: urlImagen(p.imagen),
       emoji: emojiProducto(p.nombre, emoji),
       fondo,
       descripcion: presentaciones.length > 1 ? presentaciones.map((pr) => pr.nombre).join(' · ') : categoria?.nombre ?? '',

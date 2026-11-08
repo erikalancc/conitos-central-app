@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Alert, Box, Button, ButtonBase, Dialog, IconButton, TextField, Typography, useMediaQuery } from '@mui/material';
 import { Add, Close, Remove } from '@mui/icons-material';
 import { COLORS } from '../../theme';
+import ImagenProducto from '../../components/ImagenProducto';
 import { formatMoney } from '../../utils/format';
 import { precioUnitario } from './pedido';
 
@@ -120,9 +121,13 @@ const Contenido = ({ producto, linea, onConfirm, onClose }) => {
       >
         <Box
           aria-hidden
-          sx={{ width: 52, height: 52, flexShrink: 0, borderRadius: 2.5, display: 'grid', placeItems: 'center', fontSize: '1.8rem', background: producto.fondo }}
+          sx={{ width: 52, height: 52, flexShrink: 0, borderRadius: 2.5, display: 'grid', placeItems: 'center', fontSize: '1.8rem', background: producto.fondo, overflow: 'hidden' }}
         >
-          {producto.emoji}
+          {producto.imagen ? (
+            <ImagenProducto src={producto.imagen} />
+          ) : (
+            producto.emoji
+          )}
         </Box>
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography id="personalizar-titulo" component="h2" sx={{ fontWeight: 700, fontSize: '1.15rem', color: COLORS.ink }}>

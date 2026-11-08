@@ -12,9 +12,15 @@ const describir = (recurso, r, catalogo) => {
     case 'productos': {
       const categoria = catalogo.categorias.find((c) => c.id === r.id_categoria);
       const visibles = r.presentaciones.filter((p) => p.activo);
+      // Por sucursal: avisa si no se vende en todas o si alguna tiene precio propio
+      const nombresSucursal = (ids) => ids.map((id) => catalogo.sucursales.find((s) => s.id === id)?.nombre).filter(Boolean).join(', ');
+      const enTodas = catalogo.sucursales.every((s) => r.sucursales.includes(s.id));
+      const conPrecioPropio = r.presentaciones.some((p) => Object.keys(p.precios_sucursal ?? {}).length > 0);
       return {
         chips: [
           chip(categoria?.nombre ?? 'Sin categoría', COLORS.blueSoft, COLORS.blueText),
+          ...(!enTodas ? [chip(r.sucursales.length ? `Solo en: ${nombresSucursal(r.sucursales)}` : 'Sin sucursal', COLORS.amberSoft, COLORS.amberText)] : []),
+          ...(conPrecioPropio ? [chip('Precio por sucursal', COLORS.greenSoft, COLORS.greenText)] : []),
           ...(r.requiere_sabor ? [chip(`Sabor: ${r.tipo_sabor ?? 'sin tipo'}`, COLORS.yellowSoft, COLORS.yellowText)] : []),
           ...(categoria && !categoria.activo ? [chip('Categoría inactiva', COLORS.redSoft, COLORS.redHover)] : []),
         ],
@@ -31,7 +37,7 @@ const describir = (recurso, r, catalogo) => {
     case 'sabores': {
       const vitrina = estadoVitrina(r.inventario);
       return {
-        chips: [chip(r.tipo, COLORS.blueSoft, COLORS.blueText), ...(r.es_especial ? [chip('Especial', COLORS.yellowSoft, COLORS.yellowText)] : [])],
+        chips: [...r.tipos.map((tipo) => chip(tipo, COLORS.blueSoft, COLORS.blueText)), ...(r.es_especial ? [chip('Especial', COLORS.yellowSoft, COLORS.yellowText)] : [])],
         detalle: r.recargos.length
           ? `Recargo: ${r.recargos
               .map((x) => {

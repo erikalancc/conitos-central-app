@@ -1,6 +1,7 @@
 import { Box, Button, ButtonBase, Typography } from '@mui/material';
 import { Add, Bolt } from '@mui/icons-material';
 import { COLORS } from '../../theme';
+import ImagenProducto from '../../components/ImagenProducto';
 import { formatMoney } from '../../utils/format';
 
 const BADGE_COLORES = {
@@ -152,7 +153,7 @@ const ProductoCard = ({ producto, enOrden, onAgregar }) => {
         }}
       >
         {producto.imagen ? (
-          <Box component="img" src={producto.imagen} alt="" sx={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          <ImagenProducto src={producto.imagen} sx={{ position: 'absolute', inset: 0 }} />
         ) : (
           <Box component="span" aria-hidden sx={{ fontSize: { xs: '2.6rem', md: '3.2rem' }, lineHeight: 1 }}>
             {producto.emoji}

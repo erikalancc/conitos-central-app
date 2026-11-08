@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Autocomplete, Box, Button, IconButton, LinearProgress, MenuItem, TextField, Typography } from '@mui/material';
+import { Autocomplete, Box, Button, Chip, IconButton, LinearProgress, MenuItem, TextField, Typography } from '@mui/material';
 import { Add, DeleteOutlined } from '@mui/icons-material';
 import { COLORS } from '../../theme';
 import { CampoPrecio, CampoTexto, Etiqueta, ErroresGenerales, Formulario, Interruptor, PieFormulario } from './campos';
@@ -38,7 +38,9 @@ const Inventario = ({ inventario }) => {
 
 const SaborForm = ({ registro, catalogo, errores, guardando, onGuardar, onCancelar }) => {
   const [nombre, setNombre] = useState(registro?.nombre ?? '');
-  const [tipo, setTipo] = useState(registro?.tipo ?? '');
+  // Tipos a los que aplica el sabor (varios): Helado, Paleta Agua, Agua Fresca…
+  const [tipos, setTipos] = useState(registro?.tipos ?? []);
+  const [tipoEscrito, setTipoEscrito] = useState('');
   const [especial, setEspecial] = useState(registro?.es_especial ?? false);
   const [activo, setActivo] = useState(registro?.activo ?? true);
   const [recargos, setRecargos] = useState(() => (registro?.recargos ?? []).map(filaRecargo));
@@ -54,28 +56,69 @@ const SaborForm = ({ registro, catalogo, errores, guardando, onGuardar, onCancel
 
   const cambiar = (clave, cambios) => setRecargos((lista) => lista.map((r) => (r.clave === clave ? { ...r, ...cambios } : r)));
 
-  const guardar = () =>
+  // No se permiten sabores repetidos: misma regla que la BD (sin mayúsculas, acentos ni espacios de más)
+  const [errorNombre, setErrorNombre] = useState('');
+  const sinFormato = (texto) => texto.normalize('NFD').replace(/\p{M}/gu, '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const saborRepetido = (texto) => catalogo.sabores.find((s) => s.id !== registro?.id && sinFormato(s.nombre) === sinFormato(texto));
+
+  // Si quedó un tipo nuevo escrito sin presionar Enter, también se guarda
+  const guardar = () => {
+    const repetido = nombre.trim() ? saborRepetido(nombre) : null;
+    setErrorNombre(repetido ? `Ya existe el sabor "${repetido.nombre}". No se pueden repetir sabores.` : '');
+    if (repetido) return;
+
     onGuardar({
       nombre,
-      tipo_sabor: tipo,
+      tipos: tipoEscrito.trim() ? [...tipos, tipoEscrito.trim()] : tipos,
       es_especial: especial,
       activo,
       recargos: recargos.map((r) => ({ id_presentacion: r.id_presentacion, monto: r.monto === '' ? 0 : Number(r.monto) })),
     });
+  };
 
   return (
     <Formulario onSubmit={guardar}>
-      <CampoTexto id="sabor-nombre" label="Nombre del sabor *" autoFocus value={nombre} onChange={(e) => setNombre(e.target.value)} error={errores.nombre} placeholder="Ej. Maracuyá con chile" slotProps={{ htmlInput: { maxLength: 50 } }} />
+      <CampoTexto id="sabor-nombre" label="Nombre del sabor *" autoFocus value={nombre} onChange={(e) => { setNombre(e.target.value); setErrorNombre(''); }} error={errorNombre || errores.nombre} placeholder="Ej. Maracuyá con chile" slotProps={{ htmlInput: { maxLength: 50 } }} />
 
       <Box>
-        <Etiqueta htmlFor="sabor-tipo">Tipo de sabor *</Etiqueta>
+        <Etiqueta htmlFor="sabor-tipo">Aplica para *</Etiqueta>
         <Autocomplete
+          multiple
           freeSolo
+          disableCloseOnSelect
           options={catalogo.tipos_sabor}
-          value={tipo}
-          onInputChange={(_, valor) => setTipo(valor)}
+          value={tipos}
+          onChange={(_, valor) => {
+            // Sin vacíos ni repetidos (sin distinguir mayúsculas)
+            const limpios = [];
+            valor.map((t) => t.trim()).filter(Boolean).forEach((t) => {
+              if (!limpios.some((x) => x.toLowerCase() === t.toLowerCase())) limpios.push(t);
+            });
+            setTipos(limpios);
+          }}
+          inputValue={tipoEscrito}
+          onInputChange={(_, valor, motivo) => motivo !== 'reset' && setTipoEscrito(valor)}
+          onBlur={() => {
+            const nuevo = tipoEscrito.trim();
+            if (nuevo && !tipos.some((x) => x.toLowerCase() === nuevo.toLowerCase())) setTipos([...tipos, nuevo]);
+            setTipoEscrito('');
+          }}
+          renderValue={(valor, getItemProps) =>
+            valor.map((t, index) => {
+              const { key, ...props } = getItemProps({ index });
+              return <Chip key={key} size="small" label={t} {...props} sx={{ fontWeight: 600, backgroundColor: COLORS.blueSoft, color: COLORS.blueText }} />;
+            })
+          }
           renderInput={(params) => (
-            <TextField {...params} id="sabor-tipo" size="small" placeholder="Helado, Paleta Agua…" error={Boolean(errores.tipo_sabor)} helperText={errores.tipo_sabor ?? 'Elige uno existente o escribe uno nuevo'} sx={campoSx} />
+            <TextField
+              {...params}
+              id="sabor-tipo"
+              size="small"
+              placeholder={tipos.length ? '' : 'Helado, Paleta Agua, Agua Fresca…'}
+              error={Boolean(errores.tipos)}
+              helperText={errores.tipos ?? 'Elige uno o varios; para uno nuevo escríbelo y presiona Enter'}
+              sx={campoSx}
+            />
           )}
         />
       </Box>
@@ -123,7 +166,7 @@ const SaborForm = ({ registro, catalogo, errores, guardando, onGuardar, onCancel
 
       {registro?.inventario && <Inventario inventario={registro.inventario} />}
 
-      <ErroresGenerales errores={errores} conocidos={['nombre', 'tipo_sabor', 'recargos']} />
+      <ErroresGenerales errores={errores} conocidos={['nombre', 'tipos', 'recargos']} />
       <PieFormulario guardando={guardando} onCancelar={onCancelar} etiqueta={registro ? 'Guardar cambios' : 'Crear sabor'} />
     </Formulario>
   );

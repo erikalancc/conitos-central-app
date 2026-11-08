@@ -25,7 +25,7 @@ export const RECURSOS = [
     singular: 'sabor',
     nuevo: 'Nuevo sabor',
     campoActivo: 'activo',
-    texto: (s) => `${s.nombre} ${s.tipo}`,
+    texto: (s) => `${s.nombre} ${s.tipos.join(" ")}`,
     bloqueado: (s) => (s.vendido ? 'Ya tiene ventas u órdenes de producción: desactívalo para ocultarlo del POS' : null),
   },
   {

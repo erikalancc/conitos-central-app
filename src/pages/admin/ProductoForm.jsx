@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Box, Button, Chip, IconButton, InputAdornment, MenuItem, Switch, Tooltip, Typography } from '@mui/material';
-import { Add, Check, DeleteOutlined } from '@mui/icons-material';
+import { Add, Check, DeleteOutlined, ImageOutlined, UploadOutlined } from '@mui/icons-material';
+import ImagenProducto from '../../components/ImagenProducto';
 import { COLORS } from '../../theme';
 import { formatMoney } from '../../utils/format';
+import { urlImagen, validarImagen } from '../../utils/imagen';
 import { CampoPrecio, CampoTexto, Etiqueta, ErroresGenerales, Formulario, Interruptor, PieFormulario } from './campos';
 import { precioATexto } from './formato';
 
@@ -15,6 +17,8 @@ const filaPresentacion = (p = {}) => ({
   numSabores: p.num_sabores ?? 1,
   activo: p.activo ?? true,
   vendida: p.vendida ?? false,
+  // Precio propio por sucursal { id_sucursal: '30.00' }; vacío = precio general
+  preciosSucursal: Object.fromEntries(Object.entries(p.precios_sucursal ?? {}).map(([id, precio]) => [id, precioATexto(precio)])),
 });
 
 const ProductoForm = ({ registro, catalogo, errores, guardando, onGuardar, onCancelar }) => {
@@ -27,13 +31,48 @@ const ProductoForm = ({ registro, catalogo, errores, guardando, onGuardar, onCan
   const [presentaciones, setPresentaciones] = useState(() =>
     registro?.presentaciones.length ? registro.presentaciones.map(filaPresentacion) : [filaPresentacion({ nombre: 'Única' })]
   );
+  // Sucursales donde se vende (un producto nuevo arranca en todas las activas)
+  const [sucursales, setSucursales] = useState(() => registro?.sucursales ?? catalogo.sucursales.filter((s) => s.activo).map((s) => s.id));
+  const toggleSucursal = (id) => setSucursales((lista) => (lista.includes(id) ? lista.filter((x) => x !== id) : [...lista, id]));
+  const cambiarPrecioSucursal = (clave, idSucursal, precio) =>
+    setPresentaciones((lista) => lista.map((p) => (p.clave === clave ? { ...p, preciosSucursal: { ...p.preciosSucursal, [idSucursal]: precio } } : p)));
+
+  // Imagen: el archivo nuevo se valida y se sube hasta que se guarda el producto
+  const imagenActual = urlImagen(registro?.imagen);
+  const [archivo, setArchivo] = useState(null);
+  const [quitarImagen, setQuitarImagen] = useState(false);
+  const [errorImagen, setErrorImagen] = useState('');
+  const vistaPrevia = useMemo(() => (archivo ? URL.createObjectURL(archivo) : null), [archivo]);
+  useEffect(() => () => vistaPrevia && URL.revokeObjectURL(vistaPrevia), [vistaPrevia]);
+  const imagenVisible = vistaPrevia ?? (quitarImagen ? null : imagenActual);
+
+  const elegirImagen = (e) => {
+    const elegido = e.target.files?.[0];
+    e.target.value = ''; // permite volver a elegir el mismo archivo
+    if (!elegido) return;
+    setArchivo(elegido);
+    setQuitarImagen(false);
+    setErrorImagen('');
+  };
+
+  const borrarImagen = () => {
+    setArchivo(null);
+    setQuitarImagen(Boolean(imagenActual));
+    setErrorImagen('');
+  };
 
   const cambiar = (clave, cambios) => setPresentaciones((lista) => lista.map((p) => (p.clave === clave ? { ...p, ...cambios } : p)));
   const quitar = (clave) => setPresentaciones((lista) => lista.filter((p) => p.clave !== clave));
   const toggleExtra = (id) => setExtras((lista) => (lista.includes(id) ? lista.filter((x) => x !== id) : [...lista, id]));
 
-  const guardar = () =>
-    onGuardar({
+  const guardar = () => {
+    // Formato y tamaño se revisan al guardar; si no cumple, no se guarda nada
+    const error = archivo ? validarImagen(archivo) : null;
+    setErrorImagen(error ?? '');
+    if (error) return;
+
+    onGuardar(
+      {
       nombre,
       id_categoria: idCategoria,
       requiere_sabor: requiereSabor,
@@ -46,8 +85,18 @@ const ProductoForm = ({ registro, catalogo, errores, guardando, onGuardar, onCan
         precio_base: p.precio === '' ? null : Number(p.precio),
         num_sabores: requiereSabor ? Number(p.numSabores) || 1 : 1,
         activo: p.activo,
+        // Solo los precios escritos y de sucursales donde se vende
+        precios_sucursal: Object.fromEntries(
+          Object.entries(p.preciosSucursal)
+            .filter(([id, precio]) => precio !== '' && sucursales.includes(Number(id)))
+            .map(([id, precio]) => [id, Number(precio)])
+        ),
       })),
-    });
+      sucursales,
+      },
+      { archivo, quitar: quitarImagen && !archivo }
+    );
+  };
 
   // Precio · sabores · activa · quitar (el nombre va en su propio renglón)
   const columnas = requiereSabor ? 'minmax(0, 1.2fr) minmax(0, 1fr) auto auto' : 'minmax(0, 1fr) auto auto';
@@ -65,6 +114,54 @@ const ProductoForm = ({ registro, catalogo, errores, guardando, onGuardar, onCan
         ))}
       </CampoTexto>
 
+      {/* Imagen del producto (se muestra en el POS) */}
+      <Box>
+        <Etiqueta>Imagen del producto</Etiqueta>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+          <Box
+            sx={{
+              width: 88,
+              height: 88,
+              flexShrink: 0,
+              borderRadius: 2.5,
+              overflow: 'hidden',
+              display: 'grid',
+              placeItems: 'center',
+              backgroundColor: COLORS.inputBg,
+              border: `1px ${imagenVisible ? 'solid' : 'dashed'} ${errorImagen || errores.imagen ? COLORS.red : COLORS.border}`,
+              color: COLORS.muted,
+            }}
+          >
+            {imagenVisible ? (
+              <ImagenProducto src={imagenVisible} alt={`Imagen de ${nombre || 'el producto'}`} />
+            ) : (
+              <ImageOutlined />
+            )}
+          </Box>
+          <Box sx={{ display: 'grid', gap: 0.5, minWidth: 0 }}>
+            <Button
+              component="label"
+              startIcon={<UploadOutlined />}
+              sx={{ justifyContent: 'flex-start', textTransform: 'none', fontWeight: 600 }}
+            >
+              {imagenVisible ? 'Cambiar imagen' : 'Subir imagen'}
+              <input type="file" accept="image/*" hidden onChange={elegirImagen} />
+            </Button>
+            {imagenVisible && (
+              <Button onClick={borrarImagen} startIcon={<DeleteOutlined />} sx={{ justifyContent: 'flex-start', textTransform: 'none', fontWeight: 600, color: COLORS.red }}>
+                Quitar imagen
+              </Button>
+            )}
+            {archivo && (
+              <Typography noWrap sx={{ fontSize: '0.75rem', color: COLORS.muted }}>
+                {archivo.name}
+              </Typography>
+            )}
+          </Box>
+        </Box>
+        {(errorImagen || errores.imagen) && <Typography sx={{ mt: 0.5, fontSize: '0.75rem', color: COLORS.red }}>{errorImagen || errores.imagen}</Typography>}
+      </Box>
+
       <Interruptor titulo="Requiere elegir sabor" descripcion="El POS pedirá el sabor al agregarlo a la orden" checked={requiereSabor} onChange={setRequiereSabor} />
       {requiereSabor && (
         <CampoTexto
@@ -78,7 +175,7 @@ const ProductoForm = ({ registro, catalogo, errores, guardando, onGuardar, onCan
         >
           {catalogo.tipos_sabor.map((tipo) => (
             <MenuItem key={tipo} value={tipo}>
-              {tipo} ({catalogo.sabores.filter((s) => s.tipo === tipo && s.activo).length} activos)
+              {tipo} ({catalogo.sabores.filter((s) => s.tipos.includes(tipo) && s.activo).length} activos)
             </MenuItem>
           ))}
         </CampoTexto>
@@ -172,9 +269,63 @@ const ProductoForm = ({ registro, catalogo, errores, guardando, onGuardar, onCan
         {errores.extras && <Typography sx={{ mt: 0.5, fontSize: '0.75rem', color: COLORS.red }}>{errores.extras}</Typography>}
       </Box>
 
+      {/* Sucursales y precios: dónde se vende y, si cambia, a qué precio */}
+      <Box>
+        <Etiqueta>Sucursales y precios *</Etiqueta>
+        <Typography sx={{ mb: 1, fontSize: '0.75rem', color: COLORS.muted }}>
+          Activa las sucursales donde se vende. Deja el precio vacío para usar el precio general; escríbelo solo si en esa sucursal cambia.
+        </Typography>
+        <Box sx={{ display: 'grid', gap: 1 }}>
+          {catalogo.sucursales.map((s) => {
+            const seVende = sucursales.includes(s.id);
+            const propios = presentaciones.filter((p) => p.preciosSucursal[s.id]).length;
+            return (
+              <Box key={s.id} sx={{ p: 1, borderRadius: 2, border: `1px solid ${seVende ? COLORS.blue : COLORS.border}`, backgroundColor: seVende ? COLORS.surface : COLORS.surfaceAlt }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <Switch checked={seVende} onChange={() => toggleSucursal(s.id)} slotProps={{ input: { 'aria-label': `Se vende en ${s.nombre}` } }} />
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography noWrap sx={{ fontWeight: 700, fontSize: '0.88rem', color: COLORS.ink }}>
+                      {s.nombre}
+                      {s.es_matriz && <Box component="span" sx={{ ml: 0.75, fontSize: '0.7rem', fontWeight: 600, color: COLORS.blueText }}>MATRIZ</Box>}
+                      {!s.activo && <Box component="span" sx={{ ml: 0.75, fontSize: '0.7rem', fontWeight: 600, color: COLORS.muted }}>(inactiva)</Box>}
+                    </Typography>
+                    <Typography sx={{ fontSize: '0.72rem', color: seVende ? COLORS.label : COLORS.muted }}>
+                      {!seVende ? 'No se vende aquí' : propios ? `${propios} precio(s) propio(s)` : 'Precio general'}
+                    </Typography>
+                  </Box>
+                </Box>
+                {seVende && (
+                  <Box sx={{ display: 'grid', gap: 0.75, mt: 0.75, pl: { xs: 0, sm: 6 } }}>
+                    {presentaciones.map((p, i) => (
+                      <Box key={p.clave} sx={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 130px)', alignItems: 'center', gap: 1 }}>
+                        <Typography noWrap sx={{ fontSize: '0.8rem', color: COLORS.label }}>
+                          {p.nombre || `Presentación ${i + 1}`}
+                          <Box component="span" sx={{ ml: 0.5, color: COLORS.muted }}>· general {p.precio === '' ? '—' : formatMoney(Number(p.precio))}</Box>
+                        </Typography>
+                        <CampoPrecio
+                          value={p.preciosSucursal[s.id] ?? ''}
+                          onChange={(precio) => cambiarPrecioSucursal(p.clave, s.id, precio)}
+                          error={errores[`presentaciones.${i}.precios_sucursal.${s.id}`]}
+                          placeholder="General"
+                          slotProps={{
+                            htmlInput: { inputMode: 'decimal', 'aria-label': `Precio de ${p.nombre || `la presentación ${i + 1}`} en ${s.nombre}` },
+                            input: { startAdornment: <InputAdornment position="start">$</InputAdornment> },
+                          }}
+                        />
+                      </Box>
+                    ))}
+                  </Box>
+                )}
+              </Box>
+            );
+          })}
+        </Box>
+        {errores.sucursales && <Typography sx={{ mt: 0.5, fontSize: '0.75rem', color: COLORS.red }}>{errores.sucursales}</Typography>}
+      </Box>
+
       <Interruptor titulo="Visible en el POS" descripcion="Desactívalo para ocultarlo sin perder su historial de ventas" checked={activo} onChange={setActivo} />
 
-      <ErroresGenerales errores={errores} conocidos={['nombre', 'id_categoria', 'presentaciones', 'tipo_sabor', 'extras']} />
+      <ErroresGenerales errores={errores} conocidos={['nombre', 'id_categoria', 'presentaciones', 'tipo_sabor', 'extras', 'imagen', 'sucursales']} />
       <PieFormulario guardando={guardando} onCancelar={onCancelar} etiqueta={registro ? 'Guardar cambios' : 'Crear producto'} />
     </Formulario>
   );

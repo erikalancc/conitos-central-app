@@ -7,7 +7,7 @@ import IconTile from '../../components/IconTile';
 import Panel from '../../components/Panel';
 import { FONDO_SUGERIDO } from '../../data/dummy';
 import { COLORS } from '../../theme';
-import { abrirCaja, obtenerTurno } from '../../services/corteService';
+import { abrirCaja, obtenerCaja, obtenerTurno } from '../../services/corteService';
 import { formatMoney, formatNumber } from '../../utils/format';
 
 const AJUSTES = [100, 200, 500];
@@ -47,8 +47,13 @@ const AperturaCaja = () => {
   // Turno abierto (si la caja ya se abrió no se vuelve a pedir el fondo)
   useEffect(() => {
     let vigente = true;
-    obtenerTurno()
-      .then((t) => vigente && setTurno(t))
+    obtenerCaja()
+      .then(({ turno: t, fondoSugerido }) => {
+        if (!vigente) return;
+        setTurno(t);
+        // Se propone el fondo que se dejó en el último corte
+        if (fondoSugerido !== null) setMonto(fondoSugerido);
+      })
       .catch(() => vigente && setTurno(null));
     return () => {
       vigente = false;

@@ -97,9 +97,11 @@ const Grupo = ({ titulo, total }) => (
   </Box>
 );
 
-const ConteoEfectivo = ({ conteo, onConteo, esperado }) => {
+// esperado = null: conteo a ciegas (no se muestra cuánto debería haber, solo lo contado)
+const ConteoEfectivo = ({ conteo, onConteo, esperado = null }) => {
   const contado = totalContado(conteo);
-  const diferencia = Math.round((contado - esperado) * 100) / 100;
+  const aCiegas = esperado === null;
+  const diferencia = Math.round((contado - (esperado ?? 0)) * 100) / 100;
   const estado = estadoDiferencia(diferencia);
   const iniciado = contado > 0;
 
@@ -136,6 +138,12 @@ const ConteoEfectivo = ({ conteo, onConteo, esperado }) => {
       ))}
 
       {/* Cuadre de efectivo */}
+      {aCiegas ? (
+        <Box sx={{ mt: 2, px: 2, py: 1.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderRadius: 3, backgroundColor: COLORS.greenSoft, color: COLORS.greenText }}>
+          <Typography sx={{ fontWeight: 700 }}>Total contado</Typography>
+          <Typography sx={{ fontWeight: 800, fontSize: '1.3rem', fontVariantNumeric: 'tabular-nums' }}>{formatMoney(contado)}</Typography>
+        </Box>
+      ) : (
       <Box sx={{ mt: 2, p: 2, borderRadius: 3, backgroundColor: COLORS.surfaceAlt, border: `1px solid ${COLORS.border}` }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', color: COLORS.label }}>
           <span>Efectivo esperado (sistema)</span>
@@ -169,6 +177,7 @@ const ConteoEfectivo = ({ conteo, onConteo, esperado }) => {
           </Typography>
         </Box>
       </Box>
+      )}
     </Panel>
   );
 };
