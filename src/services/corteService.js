@@ -154,9 +154,9 @@ export const cerrarCaja = async ({ conteo, fondoSiguiente, terminal, observacion
   return data.data.corte;
 };
 
-// GET /caja/cortes — cortes cerrados en un rango (por fecha de apertura)
-export const obtenerCortes = async ({ desde, hasta } = {}) => {
-  const { data } = await axiosClient.get('/caja/cortes', { params: { desde, hasta } });
+// GET /caja/cortes — cortes cerrados de una sucursal en un rango (por fecha de apertura)
+export const obtenerCortes = async ({ desde, hasta, idSucursal } = {}) => {
+  const { data } = await axiosClient.get('/caja/cortes', { params: { desde, hasta, id_sucursal: idSucursal } });
   return data.data.cortes;
 };
 

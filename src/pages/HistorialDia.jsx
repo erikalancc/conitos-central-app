@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, Box, Button, CircularProgress, IconButton, Typography } from '@mui/material';
 import { ArrowBack, InfoOutlined } from '@mui/icons-material';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { mensajeDeError } from '../api/axiosClient';
 import { ROLES } from '../auth/roles';
 import { getSession } from '../auth/session';
@@ -16,6 +16,7 @@ import { estadoDiferencia } from './corte/estilos';
 import ResumenTurno from './corte/ResumenTurno';
 import VentasDelDia from './corte/VentasDelDia';
 import CorteCuadre from './historial/CorteCuadre';
+import { useSucursalesHistorial } from './historial/useSucursalesHistorial';
 
 const GAP = { xs: 2, md: 3 };
 
@@ -35,25 +36,35 @@ const SIN_CORTES = [];
 const HistorialDia = () => {
   const { fecha } = useParams();
   const navigate = useNavigate();
-  const esVendedor = getSession()?.id_rol === ROLES.CAJERO;
-  const [estado, setEstado] = useState({ fecha: null, ventas: null, visibles: null, cortes: SIN_CORTES, error: '' });
+  const [params] = useSearchParams();
+  const rol = getSession()?.id_rol;
+  const esVendedor = rol === ROLES.CAJERO;
+  const esAdmin = rol === ROLES.ADMIN;
+  // Sucursal del día: el administrador la elige en el historial (?sucursal=); los demás ven la suya
+  const idSucursal = esAdmin ? Number(params.get('sucursal')) || undefined : undefined;
+  const rutaHistorial = idSucursal ? `/historial?sucursal=${idSucursal}` : '/historial';
+  const sucursales = useSucursalesHistorial(esAdmin);
+  const nombreSucursal = sucursales?.find((s) => s.id === (idSucursal ?? getSession()?.id_sucursal))?.nombre;
+  const [estado, setEstado] = useState({ clave: null, ventas: null, visibles: null, cortes: SIN_CORTES, error: '' });
 
   useEffect(() => {
     let vigente = true;
     // El vendedor no consulta cortes (solo ve sus últimas ventas de hoy)
-    Promise.all([obtenerVentasDelDia(fecha), esVendedor ? SIN_CORTES : obtenerCortes({ desde: fecha, hasta: fecha })])
+    Promise.all([obtenerVentasDelDia(fecha, idSucursal), esVendedor ? SIN_CORTES : obtenerCortes({ desde: fecha, hasta: fecha, idSucursal })])
       // Del primer turno al último
       .then(([{ ventas, visibles }, cortes]) =>
-        vigente && setEstado({ fecha, ventas: ventas.map(ventaDesdeApi), visibles, cortes: cortes.map(corteDesdeApi).reverse(), error: '' })
+        vigente && setEstado({ clave: `${fecha}|${idSucursal ?? ''}`, ventas: ventas.map(ventaDesdeApi), visibles, cortes: cortes.map(corteDesdeApi).reverse(), error: '' })
       )
-      .catch((e) => vigente && setEstado({ fecha, ventas: null, visibles: null, cortes: SIN_CORTES, error: mensajeDeError(e, 'No se pudieron cargar las ventas del día.') }));
+      .catch((e) => vigente && setEstado({ clave: `${fecha}|${idSucursal ?? ''}`, ventas: null, visibles: null, cortes: SIN_CORTES, error: mensajeDeError(e, 'No se pudieron cargar las ventas del día.') }));
     return () => {
       vigente = false;
     };
-  }, [fecha, esVendedor]);
+  }, [fecha, esVendedor, idSucursal]);
 
-  const ventas = estado.fecha === fecha ? estado.ventas : null;
-  const cortes = estado.fecha === fecha ? estado.cortes : SIN_CORTES;
+  // Datos vigentes solo si son de la fecha y sucursal que se muestran
+  const clave = `${fecha}|${idSucursal ?? ''}`;
+  const ventas = estado.clave === clave ? estado.ventas : null;
+  const cortes = estado.clave === clave ? estado.cortes : SIN_CORTES;
 
   const resumen = useMemo(
     () =>
@@ -69,18 +80,18 @@ const HistorialDia = () => {
   );
 
   const volver = (
-    <IconButton aria-label="Volver al historial" onClick={() => navigate('/historial')} sx={{ alignSelf: { xs: 'flex-start', sm: 'center' }, backgroundColor: COLORS.inputBg }}>
+    <IconButton aria-label="Volver al historial" onClick={() => navigate(rutaHistorial)} sx={{ alignSelf: { xs: 'flex-start', sm: 'center' }, backgroundColor: COLORS.inputBg }}>
       <ArrowBack />
     </IconButton>
   );
 
-  if (estado.error && estado.fecha === fecha) {
+  if (estado.error && estado.clave === clave) {
     return (
       <Panel sx={{ py: 6, textAlign: 'center' }}>
         <Alert severity="error" sx={{ maxWidth: 480, mx: 'auto', textAlign: 'left' }}>
           {estado.error}
         </Alert>
-        <Button onClick={() => navigate('/historial')} startIcon={<ArrowBack />} sx={{ mt: 2, textTransform: 'none', fontWeight: 600 }}>
+        <Button onClick={() => navigate(rutaHistorial)} startIcon={<ArrowBack />} sx={{ mt: 2, textTransform: 'none', fontWeight: 600 }}>
           Volver al historial
         </Button>
       </Panel>
@@ -99,7 +110,7 @@ const HistorialDia = () => {
     return (
       <Panel sx={{ py: 6, textAlign: 'center' }}>
         <Typography sx={{ fontWeight: 700, color: COLORS.ink }}>No hay ventas registradas el {formatLongDate(new Date(`${fecha}T12:00:00`)).toLowerCase()}</Typography>
-        <Button onClick={() => navigate('/historial')} startIcon={<ArrowBack />} sx={{ mt: 2, textTransform: 'none', fontWeight: 600 }}>
+        <Button onClick={() => navigate(rutaHistorial)} startIcon={<ArrowBack />} sx={{ mt: 2, textTransform: 'none', fontWeight: 600 }}>
           Volver al historial
         </Button>
       </Panel>
@@ -133,7 +144,7 @@ const HistorialDia = () => {
         inicio={volver}
         etiqueta="HISTORIAL · DETALLE DEL DÍA"
         titulo={formatLongDate(new Date(`${fecha}T12:00:00`))}
-        subtitulo={`${ventas.length} venta${ventas.length === 1 ? '' : 's'} · Vendió: ${vendedores.join(', ')}`}
+        subtitulo={`${nombreSucursal ? `${nombreSucursal} · ` : ''}${ventas.length} venta${ventas.length === 1 ? '' : 's'} · Vendió: ${vendedores.join(', ')}`}
         etiquetaNeto="VENTAS NETAS DEL DÍA"
         chips={chips}
       />

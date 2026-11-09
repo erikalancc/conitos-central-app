@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Accordion, AccordionDetails, AccordionSummary, Alert, Box, Button, Chip, CircularProgress, Typography } from '@mui/material';
 import { ChevronRight, ExpandMore, HistoryOutlined } from '@mui/icons-material';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { mensajeDeError } from '../api/axiosClient';
 import { ROLES } from '../auth/roles';
 import { getSession } from '../auth/session';
@@ -13,6 +13,8 @@ import { COLORS } from '../theme';
 import { formatMoney } from '../utils/format';
 import { COLOR_METODO, estadoDiferencia } from './corte/estilos';
 import { agruparPorSemana, armarDias } from './historial/agrupar';
+import SelectorSucursal from './historial/SelectorSucursal';
+import { useSucursalesHistorial } from './historial/useSucursalesHistorial';
 
 // Semanas que se piden al API por bloque (máximo del API: 366 días)
 const SEMANAS_POR_BLOQUE = 8;
@@ -108,7 +110,8 @@ const DiaFila = ({ dia, esHoy, onVer }) => (
   </Box>
 );
 
-const HistorialSemanas = () => {
+// Historial de una sucursal (selector: solo para el administrador, que elige cuál ver)
+const HistorialSemanas = ({ idSucursal, selector }) => {
   const navigate = useNavigate();
   const [semanasPedidas, setSemanasPedidas] = useState(SEMANAS_POR_BLOQUE);
   const [diasApi, setDiasApi] = useState(null);
@@ -122,7 +125,7 @@ const HistorialSemanas = () => {
   // Ventas por día y cortes de caja del mismo rango (para el cuadre)
   useEffect(() => {
     let vigente = true;
-    const rango = { desde: haceDias(semanasPedidas * 7 - 1), hasta: claveDia(new Date()) };
+    const rango = { desde: haceDias(semanasPedidas * 7 - 1), hasta: claveDia(new Date()), idSucursal };
     Promise.all([obtenerResumenVentas(rango), obtenerCortes(rango)])
       .then(([resumen, cortesApi]) => {
         if (!vigente) return;
@@ -135,7 +138,7 @@ const HistorialSemanas = () => {
     return () => {
       vigente = false;
     };
-  }, [semanasPedidas]);
+  }, [semanasPedidas, idSucursal]);
 
   const semanas = useMemo(() => (diasApi ? agruparPorSemana(armarDias(diasApi, cortes)) : []), [diasApi, cortes]);
   // La semana más reciente abierta por defecto
@@ -167,6 +170,7 @@ const HistorialSemanas = () => {
           <Typography sx={{ fontSize: '0.85rem', color: COLORS.label }}>
             Agrupadas por semana · abre un día para ver cada venta, su forma de pago y su detalle
           </Typography>
+          {selector && <Box sx={{ mt: 1.5 }}>{selector}</Box>}
         </Box>
       </Panel>
 
@@ -233,7 +237,7 @@ const HistorialSemanas = () => {
             </AccordionSummary>
             <AccordionDetails sx={{ display: 'grid', gap: 1, px: { xs: 1.5, md: 3 }, pb: { xs: 1.5, md: 3 }, pt: 0 }}>
               {semana.dias.map((dia) => (
-                <DiaFila key={dia.clave} dia={dia} esHoy={dia.clave === hoy} onVer={() => navigate(`/historial/${dia.clave}`)} />
+                <DiaFila key={dia.clave} dia={dia} esHoy={dia.clave === hoy} onVer={() => navigate(idSucursal ? `/historial/${dia.clave}?sucursal=${idSucursal}` : `/historial/${dia.clave}`)} />
               ))}
             </AccordionDetails>
           </Accordion>
@@ -254,6 +258,26 @@ const AHoy = () => {
   const [ruta] = useState(() => `/historial/${claveDia(new Date())}`);
   return <Navigate to={ruta} replace />;
 };
-const Historial = () => (getSession()?.id_rol === ROLES.CAJERO ? <AHoy /> : <HistorialSemanas />);
+/**
+ * Administrador: ve todas las sucursales, pero una a la vez (sus ventas y cortes nunca se mezclan).
+ * La sucursal elegida va en la URL (?sucursal=) para conservarla al abrir un día y al regresar.
+ */
+const HistorialAdmin = () => {
+  const [params, setParams] = useSearchParams();
+  const sucursales = useSucursalesHistorial();
+  const idSucursal = Number(params.get('sucursal')) || getSession()?.id_sucursal || sucursales?.[0]?.id || null;
+
+  const cambiar = (id) => setParams({ sucursal: String(id) }, { replace: true });
+  const selector = sucursales?.length === 0 ? null : <SelectorSucursal sucursales={sucursales} valor={idSucursal} onCambiar={cambiar} />;
+
+  // key: al cambiar de sucursal el historial empieza de cero (8 semanas, semana actual abierta)
+  return <HistorialSemanas key={idSucursal ?? 'asignada'} idSucursal={idSucursal} selector={selector} />;
+};
+
+const Historial = () => {
+  const rol = getSession()?.id_rol;
+  if (rol === ROLES.CAJERO) return <AHoy />;
+  return rol === ROLES.ADMIN ? <HistorialAdmin /> : <HistorialSemanas />;
+};
 
 export default Historial;

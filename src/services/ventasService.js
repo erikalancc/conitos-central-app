@@ -82,16 +82,17 @@ export const contarVendidosPorProducto = () => {
   return conteo;
 };
 
-// GET /ventas/resumen — totales por día (default: últimas 8 semanas)
-export const obtenerResumenVentas = async ({ desde, hasta } = {}) => {
-  const { data } = await axiosClient.get('/ventas/resumen', { params: { desde, hasta } });
+// GET /ventas/resumen — totales por día de una sucursal (default: últimas 8 semanas)
+// idSucursal: solo lo toma en cuenta el API para el administrador; los demás siempre ven la suya
+export const obtenerResumenVentas = async ({ desde, hasta, idSucursal } = {}) => {
+  const { data } = await axiosClient.get('/ventas/resumen', { params: { desde, hasta, id_sucursal: idSucursal } });
   return data.data;
 };
 
-// GET /ventas?fecha=AAAA-MM-DD — ventas del día con su detalle
+// GET /ventas?fecha=AAAA-MM-DD — ventas del día de una sucursal con su detalle
 // visibles: null = todas; número = el vendedor solo recibe sus últimas N ventas (y solo de hoy)
-export const obtenerVentasDelDia = async (fecha) => {
-  const { data } = await axiosClient.get('/ventas', { params: { fecha } });
+export const obtenerVentasDelDia = async (fecha, idSucursal) => {
+  const { data } = await axiosClient.get('/ventas', { params: { fecha, id_sucursal: idSucursal } });
   return { ventas: data.data.ventas, visibles: data.data.ventas_visibles ?? null };
 };
 
