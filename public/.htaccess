@@ -1,7 +1,10 @@
 <IfModule mod_rewrite.c>
   RewriteEngine On
   RewriteBase /
-  
+
+  # La carpeta /api es del API (CodeIgniter): no se toca
+  RewriteRule ^api(/|$) - [L]
+
   # Redirigir cualquier petición a index.html para soportar rutas de React Router
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d

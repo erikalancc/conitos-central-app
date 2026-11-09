@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Box, Button, Chip, CircularProgress, InputBase, Snackbar, TextField, Typography } from '@mui/material';
+import { Box, Button, Chip, CircularProgress, InputBase, TextField, Typography } from '@mui/material';
 import { ArrowForward, Icecream, InboxOutlined, LockOpenOutlined, PaymentsOutlined, PointOfSale } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { mensajeDeError } from '../../api/axiosClient';
@@ -9,6 +9,8 @@ import { FONDO_SUGERIDO } from '../../data/dummy';
 import { COLORS } from '../../theme';
 import { abrirCaja, obtenerCaja, obtenerTurno } from '../../services/corteService';
 import { formatMoney, formatNumber } from '../../utils/format';
+import Aviso from '../../components/Aviso';
+import { avisoError, avisoInfo } from '../../utils/aviso';
 
 const AJUSTES = [100, 200, 500];
 
@@ -30,7 +32,7 @@ const AperturaCaja = () => {
   // Texto sin formato mientras el usuario edita el monto
   const [montoTexto, setMontoTexto] = useState(null);
   const [comentario, setComentario] = useState('');
-  const [aviso, setAviso] = useState('');
+  const [aviso, setAviso] = useState(null);
   const [turno, setTurno] = useState(undefined); // undefined = consultando
   const [abriendo, setAbriendo] = useState(false);
 
@@ -66,7 +68,7 @@ const AperturaCaja = () => {
       await abrirCaja({ fondo: monto, comentario: comentario.trim() });
       navigate('/pos');
     } catch (error) {
-      setAviso(mensajeDeError(error, 'No se pudo abrir la caja.'));
+      setAviso(avisoError(mensajeDeError(error, 'No se pudo abrir la caja.')));
       // 409: otra terminal o pestaña ya la abrió
       if (error.response?.status === 409) obtenerTurno().then(setTurno).catch(() => {});
     } finally {
@@ -269,7 +271,7 @@ const AperturaCaja = () => {
           {abriendo ? 'Abriendo caja…' : 'Abrir caja e ir a ventas'}
         </Button>
         <Button
-          onClick={() => setAviso('Señal de apertura enviada a la gaveta (simulación)')}
+          onClick={() => setAviso(avisoInfo('Señal de apertura enviada a la gaveta (simulación)'))}
           startIcon={<InboxOutlined />}
           sx={{
             minHeight: { xs: 52, md: 68 },
@@ -288,13 +290,7 @@ const AperturaCaja = () => {
         </Button>
       </Box>
 
-      <Snackbar
-        open={Boolean(aviso)}
-        autoHideDuration={2500}
-        onClose={() => setAviso('')}
-        message={aviso}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      />
+      <Aviso aviso={aviso} onClose={() => setAviso(null)} />
     </Panel>
   );
 };

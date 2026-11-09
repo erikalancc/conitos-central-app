@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Box, Button, Chip, CircularProgress, Dialog, IconButton, MenuItem, Snackbar, Switch, Tooltip, Typography } from '@mui/material';
+import { Alert, Box, Button, Chip, CircularProgress, Dialog, IconButton, MenuItem, Switch, Tooltip, Typography } from '@mui/material';
 import { Add, AddCircleOutlined, DeleteOutlined, EditOutlined, FactCheckOutlined, LockOutlined } from '@mui/icons-material';
 import { mensajeDeError } from '../api/axiosClient';
 import IconTile from '../components/IconTile';
@@ -8,6 +8,8 @@ import { eliminarPuntoChecklist, guardarPuntoChecklist, obtenerChecklistAdmin } 
 import { COLORS } from '../theme';
 import { CampoTexto, Etiqueta, ErroresGenerales, Formulario, Interruptor, PieFormulario } from './admin/campos';
 import SeccionesAdmin from './admin/SeccionesAdmin';
+import Aviso from '../components/Aviso';
+import { avisoError, avisoExito } from '../utils/aviso';
 
 const MOMENTOS = [
   { id: 'apertura', label: 'Apertura', ayuda: 'Se pide al iniciar el día, antes de vender.' },
@@ -178,7 +180,7 @@ const ChecklistOperativo = () => {
   const [editor, setEditor] = useState(null); // { punto } | { punto: null, momento }
   const [errores, setErrores] = useState({});
   const [guardando, setGuardando] = useState(false);
-  const [aviso, setAviso] = useState('');
+  const [aviso, setAviso] = useState(null);
 
   useEffect(() => {
     obtenerChecklistAdmin().then(setDatos).catch((e) => setErrorCarga(mensajeDeError(e)));
@@ -190,10 +192,10 @@ const ChecklistOperativo = () => {
     try {
       setDatos(await guardarPuntoChecklist(id, punto));
       setEditor(null);
-      setAviso(mensaje);
+      setAviso(avisoExito(mensaje));
     } catch (e) {
       if (e.response?.status === 400) setErrores(e.response.data?.messages ?? {});
-      else setAviso(mensajeDeError(e));
+      else setAviso(avisoError(mensajeDeError(e)));
     } finally {
       setGuardando(false);
     }
@@ -202,9 +204,9 @@ const ChecklistOperativo = () => {
   const eliminar = async (punto) => {
     try {
       setDatos(await eliminarPuntoChecklist(punto.id));
-      setAviso(`"${punto.titulo}" borrado`);
+      setAviso(avisoExito(`"${punto.titulo}" borrado`));
     } catch (e) {
-      setAviso(mensajeDeError(e));
+      setAviso(avisoError(mensajeDeError(e)));
     }
   };
 
@@ -287,7 +289,7 @@ const ChecklistOperativo = () => {
         )}
       </Dialog>
 
-      <Snackbar open={Boolean(aviso)} autoHideDuration={2500} onClose={() => setAviso('')} message={aviso} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} />
+      <Aviso aviso={aviso} onClose={() => setAviso(null)} />
     </Box>
   );
 };

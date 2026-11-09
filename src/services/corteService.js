@@ -95,6 +95,8 @@ export const corteDesdeApi = (corte) => ({
   id: corte.id,
   fecha: corte.cierre?.fecha ?? corte.apertura.fecha,
   desde: corte.apertura.fecha,
+  // Cada sucursal tiene su propia caja: el corte dice de cuál es
+  sucursal: corte.sucursal?.nombre ?? null,
   usuarioNombre: corte.cierre?.usuario ?? corte.apertura.usuario,
   efectivo: {
     ...corte.efectivo,

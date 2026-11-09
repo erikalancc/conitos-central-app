@@ -13,7 +13,6 @@ import {
   IconButton,
   InputAdornment,
   MenuItem,
-  Snackbar,
   Switch,
   TextField,
   Tooltip,
@@ -43,6 +42,8 @@ import { formatMoney } from '../utils/format';
 import { coincide, TIPOS_TERMINAL } from './admin/recursos';
 import SeccionesAdmin from './admin/SeccionesAdmin';
 import SucursalForm from './admin/SucursalForm';
+import Aviso from '../components/Aviso';
+import { avisoError, avisoExito } from '../utils/aviso';
 
 const filtroSx = {
   minWidth: 0,
@@ -184,7 +185,7 @@ const Sucursales = () => {
   const [guardando, setGuardando] = useState(false);
   const [cambiandoId, setCambiandoId] = useState(null);
   const [porEliminar, setPorEliminar] = useState(null);
-  const [aviso, setAviso] = useState('');
+  const [aviso, setAviso] = useState(null);
 
   const cargar = () =>
     obtenerSucursales()
@@ -227,10 +228,10 @@ const Sucursales = () => {
       const respuesta = editor.id ? await actualizarSucursal(editor.id, cambios) : await crearSucursal(cambios);
       setDatos(respuesta);
       setEditor({ id: respuesta.id });
-      setAviso(editor.id ? 'Sucursal actualizada' : 'Sucursal registrada y activa');
+      setAviso(avisoExito(editor.id ? 'Sucursal actualizada' : 'Sucursal registrada y activa'));
     } catch (error) {
       if (error.response?.status === 400) setErrores(error.response.data?.messages ?? {});
-      else setAviso(mensajeDeError(error));
+      else setAviso(avisoError(mensajeDeError(error)));
     } finally {
       setGuardando(false);
     }
@@ -240,9 +241,9 @@ const Sucursales = () => {
     setCambiandoId(sucursal.id);
     try {
       setDatos(await actualizarSucursal(sucursal.id, { activo }));
-      setAviso(`${sucursal.nombre}: ${activo ? 'operando' : 'inactiva'}`);
+      setAviso(avisoExito(`${sucursal.nombre}: ${activo ? 'operando' : 'inactiva'}`));
     } catch (error) {
-      setAviso(mensajeDeError(error));
+      setAviso(avisoError(mensajeDeError(error)));
     } finally {
       setCambiandoId(null);
     }
@@ -254,9 +255,9 @@ const Sucursales = () => {
     try {
       setDatos(await eliminarSucursal(sucursal.id));
       if (editor?.id === sucursal.id) cerrarEditor();
-      setAviso(`${sucursal.nombre} eliminada`);
+      setAviso(avisoExito(`${sucursal.nombre} eliminada`));
     } catch (error) {
-      setAviso(mensajeDeError(error));
+      setAviso(avisoError(mensajeDeError(error)));
     }
   };
 
@@ -441,7 +442,7 @@ const Sucursales = () => {
         </DialogActions>
       </Dialog>
 
-      <Snackbar open={Boolean(aviso)} autoHideDuration={3000} onClose={() => setAviso('')} message={aviso} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} />
+      <Aviso aviso={aviso} onClose={() => setAviso(null)} />
     </Box>
   );
 };

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Alert, Snackbar } from '@mui/material';
 import { useLocation } from 'react-router-dom';
 import { mensajeDeError } from '../../api/axiosClient';
+import Aviso from '../../components/Aviso';
+import { avisoError, avisoExito } from '../../utils/aviso';
 import { ROLES } from '../../auth/roles';
 import { getSession } from '../../auth/session';
 import { checklistPendiente, obtenerChecklist } from '../../services/checklistService';
@@ -77,17 +78,8 @@ const ChecklistObligatorio = () => {
         />
       )}
 
-      <Snackbar open={Boolean(error)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
-        <Alert severity="error" variant="filled" onClose={() => setError('')}>
-          {error}
-        </Alert>
-      </Snackbar>
-
-      <Snackbar open={aviso} autoHideDuration={3000} onClose={() => setAviso(false)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
-        <Alert severity="success" variant="filled" onClose={() => setAviso(false)}>
-          Checklist guardado.
-        </Alert>
-      </Snackbar>
+      <Aviso aviso={error ? avisoError(error) : null} onClose={() => setError('')} />
+      <Aviso aviso={aviso ? avisoExito('Checklist guardado.') : null} onClose={() => setAviso(false)} />
     </>
   );
 };

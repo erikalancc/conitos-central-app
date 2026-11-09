@@ -13,7 +13,6 @@ import {
   IconButton,
   InputAdornment,
   MenuItem,
-  Snackbar,
   Tab,
   Tabs,
   TextField,
@@ -40,6 +39,8 @@ import ProductoForm from './admin/ProductoForm';
 import { coincide, estadoVitrina, RECURSOS, recursoPorId } from './admin/recursos';
 import SaborForm from './admin/SaborForm';
 import SeccionesAdmin from './admin/SeccionesAdmin';
+import Aviso from '../components/Aviso';
+import { avisoError, avisoExito, avisoInfo } from '../utils/aviso';
 
 const FORMULARIOS = {
   productos: ProductoForm,
@@ -91,7 +92,7 @@ const Administracion = () => {
   const [guardando, setGuardando] = useState(false);
   const [cambiandoId, setCambiandoId] = useState(null);
   const [porEliminar, setPorEliminar] = useState(null);
-  const [aviso, setAviso] = useState('');
+  const [aviso, setAviso] = useState(null);
   const panelEditorRef = useRef(null);
 
   const cargar = () =>
@@ -162,14 +163,14 @@ const Administracion = () => {
         setCatalogo(respuesta.catalogo);
       } catch (error) {
         setErrores({ imagen: error.response?.data?.messages?.imagen ?? mensajeDeError(error, 'No se pudo guardar la imagen.') });
-        setAviso('El producto se guardó, pero la imagen no. Revísala e intenta de nuevo.');
+        setAviso(avisoInfo('El producto se guardó, pero la imagen no. Revísala e intenta de nuevo.'));
         return;
       }
 
-      setAviso(editor.id ? 'Cambios guardados' : `${recurso.singular.charAt(0).toUpperCase()}${recurso.singular.slice(1)} creado`);
+      setAviso(avisoExito(editor.id ? 'Cambios guardados' : `${recurso.singular.charAt(0).toUpperCase()}${recurso.singular.slice(1)} creado`));
     } catch (error) {
       if (error.response?.status === 400) setErrores(error.response.data?.messages ?? {});
-      else setAviso(mensajeDeError(error));
+      else setAviso(avisoError(mensajeDeError(error)));
     } finally {
       setGuardando(false);
     }
@@ -180,9 +181,9 @@ const Administracion = () => {
     try {
       const respuesta = await actualizarRegistro(recurso.id, registro.id, { [recurso.campoActivo]: valor });
       setCatalogo(respuesta.catalogo);
-      setAviso(`${registro.nombre}: ${valor ? 'visible' : 'oculto'} en el POS`);
+      setAviso(avisoExito(`${registro.nombre}: ${valor ? 'visible' : 'oculto'} en el POS`));
     } catch (error) {
-      setAviso(mensajeDeError(error));
+      setAviso(avisoError(mensajeDeError(error)));
     } finally {
       setCambiandoId(null);
     }
@@ -195,9 +196,9 @@ const Administracion = () => {
       const respuesta = await eliminarRegistro(recurso.id, registro.id);
       setCatalogo(respuesta.catalogo);
       if (editor?.id === registro.id) cerrarEditor();
-      setAviso(`${registro.nombre} eliminado`);
+      setAviso(avisoExito(`${registro.nombre} eliminado`));
     } catch (error) {
-      setAviso(mensajeDeError(error));
+      setAviso(avisoError(mensajeDeError(error)));
     }
   };
 
@@ -456,7 +457,7 @@ const Administracion = () => {
         </DialogActions>
       </Dialog>
 
-      <Snackbar open={Boolean(aviso)} autoHideDuration={3000} onClose={() => setAviso('')} message={aviso} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} />
+      <Aviso aviso={aviso} onClose={() => setAviso(null)} />
     </Box>
   );
 };

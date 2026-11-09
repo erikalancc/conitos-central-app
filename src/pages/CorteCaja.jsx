@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Box, Button, CircularProgress, Dialog, Divider, Snackbar, Step, StepLabel, Stepper, TextField, Typography } from '@mui/material';
+import { Alert, Box, Button, CircularProgress, Dialog, Divider, Step, StepLabel, Stepper, TextField, Typography } from '@mui/material';
 import { ArrowBack, ArrowForward, CheckCircle, CreditCard, LockOutlined, PointOfSale, PrintOutlined, SavingsOutlined } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { mensajeDeError } from '../api/axiosClient';
@@ -22,6 +22,8 @@ import MovimientosEfectivo from './corte/MovimientosEfectivo';
 import ResumenTurno from './corte/ResumenTurno';
 import { descargarTicketCorte } from './corte/ticketCorte';
 import VentasDelDia from './corte/VentasDelDia';
+import Aviso from '../components/Aviso';
+import { avisoError, avisoExito } from '../utils/aviso';
 
 const GAP = { xs: 2, md: 3 };
 const PASOS = ['Turno', 'Conteo', 'Resultado'];
@@ -164,7 +166,7 @@ const CorteCaja = () => {
   const [confirmarConteo, setConfirmarConteo] = useState(false);
   const [cerrando, setCerrando] = useState(false);
   const [corte, setCorte] = useState(null);
-  const [aviso, setAviso] = useState('');
+  const [aviso, setAviso] = useState(null);
   const [checklistCierre, setChecklistCierre] = useState(null); // checklist "antes del corte" pendiente
 
   // Vendedor: antes de iniciar el corte debe completar el checklist de cierre (si su sucursal tiene puntos)
@@ -175,7 +177,7 @@ const CorteCaja = () => {
       if (checklistPendiente(checklist)) setChecklistCierre(checklist);
       else setPaso(1);
     } catch (e) {
-      setAviso(mensajeDeError(e, 'No se pudo consultar el checklist de antes del corte.'));
+      setAviso(avisoError(mensajeDeError(e, 'No se pudo consultar el checklist de antes del corte.')));
     }
   };
 
@@ -231,10 +233,10 @@ const CorteCaja = () => {
   const handleMovimiento = async (movimiento) => {
     try {
       setTurno(await registrarMovimiento(movimiento));
-      setAviso(movimiento.tipo === 'retiro' ? 'Retiro registrado' : 'Entrada registrada');
+      setAviso(avisoExito(movimiento.tipo === 'retiro' ? 'Retiro registrado' : 'Entrada registrada'));
       return true;
     } catch (error) {
-      setAviso(mensajeDeError(error, 'No se pudo registrar el movimiento.'));
+      setAviso(avisoError(mensajeDeError(error, 'No se pudo registrar el movimiento.')));
       return false;
     }
   };
@@ -259,7 +261,7 @@ const CorteCaja = () => {
       descargarTicketCorte(ticket);
       setCorte({ ...cerrado, neto: cerrado.resumen.neto, ticket });
     } catch (error) {
-      setAviso(mensajeDeError(error, 'No se pudo registrar el corte. Intenta de nuevo.'));
+      setAviso(avisoError(mensajeDeError(error, 'No se pudo registrar el corte. Intenta de nuevo.')));
       // Pudo cambiar algo (otra venta, otro cierre): se recarga el turno y se repasa el resultado
       obtenerTurno().then(setTurno).catch(() => {});
     } finally {
@@ -314,7 +316,7 @@ const CorteCaja = () => {
                   startIcon={<PrintOutlined />}
                   onClick={() => {
                     descargarTicketCorte({ tipo: 'X', resumen, conteo: {}, terminal: { monto: 0 }, observaciones: '', user });
-                    setAviso('Pre-corte X guardado en PDF');
+                    setAviso(avisoExito('Pre-corte X guardado en PDF'));
                   }}
                   sx={botonSecundarioSx}
                 >
@@ -543,7 +545,7 @@ const CorteCaja = () => {
         )}
       </Dialog>
 
-      <Snackbar open={Boolean(aviso)} autoHideDuration={2500} onClose={() => setAviso('')} message={aviso} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} />
+      <Aviso aviso={aviso} onClose={() => setAviso(null)} />
     </Box>
   );
 };

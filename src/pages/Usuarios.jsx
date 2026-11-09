@@ -14,7 +14,6 @@ import {
   IconButton,
   InputAdornment,
   MenuItem,
-  Snackbar,
   Switch,
   TextField,
   Tooltip,
@@ -30,6 +29,8 @@ import { COLORS } from '../theme';
 import { coincide } from './admin/recursos';
 import SeccionesAdmin from './admin/SeccionesAdmin';
 import UsuarioForm from './admin/UsuarioForm';
+import Aviso from '../components/Aviso';
+import { avisoError, avisoExito } from '../utils/aviso';
 
 const filtroSx = {
   minWidth: 0,
@@ -129,7 +130,7 @@ const Usuarios = () => {
   const [guardando, setGuardando] = useState(false);
   const [cambiandoId, setCambiandoId] = useState(null);
   const [porEliminar, setPorEliminar] = useState(null);
-  const [aviso, setAviso] = useState('');
+  const [aviso, setAviso] = useState(null);
 
   const cargar = () =>
     obtenerUsuarios()
@@ -173,10 +174,10 @@ const Usuarios = () => {
       const respuesta = editor.id ? await actualizarUsuario(editor.id, cambios) : await crearUsuario(cambios);
       setDatos(respuesta);
       setEditor({ id: respuesta.id });
-      setAviso(editor.id ? 'Usuario actualizado' : 'Usuario creado: ya puede iniciar sesión');
+      setAviso(avisoExito(editor.id ? 'Usuario actualizado' : 'Usuario creado: ya puede iniciar sesión'));
     } catch (error) {
       if (error.response?.status === 400) setErrores(error.response.data?.messages ?? {});
-      else setAviso(mensajeDeError(error));
+      else setAviso(avisoError(mensajeDeError(error)));
     } finally {
       setGuardando(false);
     }
@@ -186,9 +187,9 @@ const Usuarios = () => {
     setCambiandoId(usuario.id);
     try {
       setDatos(await actualizarUsuario(usuario.id, { activo }));
-      setAviso(`${usuario.nombre}: ${activo ? 'activo' : 'desactivado'}`);
+      setAviso(avisoExito(`${usuario.nombre}: ${activo ? 'activo' : 'desactivado'}`));
     } catch (error) {
-      setAviso(mensajeDeError(error));
+      setAviso(avisoError(mensajeDeError(error)));
     } finally {
       setCambiandoId(null);
     }
@@ -200,9 +201,9 @@ const Usuarios = () => {
     try {
       setDatos(await eliminarUsuario(usuario.id));
       if (editor?.id === usuario.id) cerrarEditor();
-      setAviso(`${usuario.nombre} eliminado`);
+      setAviso(avisoExito(`${usuario.nombre} eliminado`));
     } catch (error) {
-      setAviso(mensajeDeError(error));
+      setAviso(avisoError(mensajeDeError(error)));
     }
   };
 
@@ -386,7 +387,7 @@ const Usuarios = () => {
         </DialogActions>
       </Dialog>
 
-      <Snackbar open={Boolean(aviso)} autoHideDuration={3000} onClose={() => setAviso('')} message={aviso} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} />
+      <Aviso aviso={aviso} onClose={() => setAviso(null)} />
     </Box>
   );
 };

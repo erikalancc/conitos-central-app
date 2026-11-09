@@ -11,7 +11,6 @@ import {
   ListItemText,
   Menu,
   MenuItem,
-  Snackbar,
   TextField,
   Typography,
   useMediaQuery,
@@ -31,6 +30,8 @@ import ProductoCard from './pos/ProductoCard';
 import VentaCompletadaDialog from './pos/VentaCompletadaDialog';
 import { actualizarPrecios, adaptarCatalogo } from './pos/catalogoPos';
 import { configuracionInicial, usePedido } from './pos/pedido';
+import Aviso from '../components/Aviso';
+import { avisoError, avisoExito, avisoInfo } from '../utils/aviso';
 
 const ORDENAMIENTOS = [
   { id: 'popular', label: 'Más vendidos', comparar: (a, b) => b.popularidad - a.popularidad },
@@ -80,7 +81,7 @@ const Pos = () => {
   const [cobrando, setCobrando] = useState(false);
   const [venta, setVenta] = useState(null);
   const [ordenAbierta, setOrdenAbierta] = useState(false);
-  const [aviso, setAviso] = useState('');
+  const [aviso, setAviso] = useState(null);
   const [catalogo, setCatalogo] = useState(null);
   const [errorCatalogo, setErrorCatalogo] = useState('');
 
@@ -159,13 +160,13 @@ const Pos = () => {
       setCatalogo(nuevo);
       orden.reemplazarLineas(lineas);
       setRecibido(null);
-      setAviso(
+      setAviso(avisoInfo(
         quitadas.length
           ? `Se actualizaron los precios y se quitó lo que ya no está disponible: ${quitadas.join(', ')}. Revisa la orden.`
           : 'Se actualizaron los precios del catálogo. Revisa el nuevo total y cobra de nuevo.'
-      );
+      ));
     } catch (error) {
-      setAviso(mensajeDeError(error, 'No se pudo actualizar el catálogo.'));
+      setAviso(avisoError(mensajeDeError(error, 'No se pudo actualizar el catálogo.')));
     }
   };
 
@@ -193,7 +194,7 @@ const Pos = () => {
       setVenta(registro);
     } catch (error) {
       if (error.response?.status === 409) await actualizarCatalogoDeOrden();
-      else setAviso(mensajeDeError(error, 'No se pudo registrar la venta. Intenta de nuevo.'));
+      else setAviso(avisoError(mensajeDeError(error, 'No se pudo registrar la venta. Intenta de nuevo.')));
     } finally {
       setCobrando(false);
     }
@@ -208,7 +209,7 @@ const Pos = () => {
 
   const handleGuardar = async () => {
     await guardarOrden({ ...pedido, totales, usuarioId: user.id });
-    setAviso(`Orden #${pedido.folio} guardada en espera`);
+    setAviso(avisoExito(`Orden #${pedido.folio} guardada en espera`));
     setOrdenAbierta(false);
     orden.nuevaOrden();
   };
@@ -222,7 +223,7 @@ const Pos = () => {
     cobrando,
     onCobrar: handleCobrar,
     onGuardar: handleGuardar,
-    onPrecuenta: () => setAviso('Pre-cuenta enviada a la impresora (simulación)'),
+    onPrecuenta: () => setAviso(avisoInfo('Pre-cuenta enviada a la impresora (simulación)')),
     onModificar: handleModificar,
   };
 
@@ -536,17 +537,11 @@ const Pos = () => {
 
       <VentaCompletadaDialog
         venta={venta}
-        onImprimir={() => setAviso('Ticket enviado a la impresora (simulación)')}
+        onImprimir={() => setAviso(avisoInfo('Ticket enviado a la impresora (simulación)'))}
         onNuevaVenta={handleNuevaVenta}
       />
 
-      <Snackbar
-        open={Boolean(aviso)}
-        autoHideDuration={4500}
-        onClose={() => setAviso('')}
-        message={aviso}
-        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
-      />
+      <Aviso aviso={aviso} onClose={() => setAviso(null)} />
     </Box>
   );
 };

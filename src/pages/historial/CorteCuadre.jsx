@@ -85,6 +85,7 @@ const CorteCuadre = ({ corte }) => {
             Corte Z · {hora(corte.desde)} a {hora(corte.fecha)} hrs
           </Typography>
           <Typography sx={{ fontSize: '0.8rem', color: COLORS.muted }}>
+            {corte.sucursal && `${corte.sucursal} · `}
             {corte.usuarioNombre ?? 'Cajero no registrado'} · {resumen.tickets} tickets · {formatMoney(resumen.neto)}
           </Typography>
         </Box>
